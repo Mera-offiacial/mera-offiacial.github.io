@@ -1,1 +1,1 @@
-# mera-offiacial.github.io
+# mera-official.com
