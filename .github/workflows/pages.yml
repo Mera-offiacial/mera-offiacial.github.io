@@ -3,13 +3,21 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # ทุก 10 นาที: ดึงข้อมูลสินค้า/แบนเนอร์ล่าสุดจาก Apps Script มาเก็บเป็นไฟล์บนเว็บ
+  # (ขึ้นเว็บใหม่เฉพาะตอนข้อมูลเปลี่ยน)
+  schedule:
+    - cron: '*/10 * * * *'
 permissions:
   contents: read
   pages: write
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
+env:
+  CATALOG_URL: https://script.google.com/macros/s/AKfycbyLpV_gCumuBu616iKD8eA7PvwiaHMRX21nY0ePnDGuh9YyQ_NJBfh46pgsf9IRhH1vQg/exec
+  CHECKOUT_URL: https://script.google.com/macros/s/AKfycbxjl814hxTjMaWNE0XYW9RSrfop63fTR6GYQlKcjGBxW4R4tlHPYxwJdTCUOEN8gW5Q/exec
+  SITE_URL: https://meraofficial.co
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -19,9 +27,46 @@ jobs:
       - uses: actions/checkout@v4
       - name: Unzip site
         run: mkdir _site && unzip -q meracatalogue-site.zip -d _site && touch _site/.nojekyll
-      - name: Add data snapshot (data/catalog.json, data/content.json)
+      - name: Add data snapshot from repo (if any)
         run: if [ -d data ]; then mkdir -p _site/data && cp -r data/. _site/data/; fi
+      - name: Fetch latest data from Apps Script
+        id: data
+        run: |
+          mkdir -p _site/data
+          ok=0
+          # ข้อมูลสินค้า (GET)
+          if curl -fsSL --retry 2 --max-time 90 "$CATALOG_URL?t=$(date +%s)" -o /tmp/catalog.json \
+             && jq -e 'type == "object" and (.products | length > 0)' /tmp/catalog.json > /dev/null; then
+            cp /tmp/catalog.json _site/data/catalog.json; ok=1
+          else
+            echo "::warning::ดึงข้อมูลสินค้าไม่สำเร็จ ใช้ข้อมูลเดิม"
+            curl -fsSL --max-time 30 "$SITE_URL/data/catalog.json" -o _site/data/catalog.json || rm -f _site/data/catalog.json
+          fi
+          # แบนเนอร์และข้อความ (POST · ไม่ใส่ -X เพื่อให้ redirect ของ Apps Script เปลี่ยนเป็น GET)
+          if curl -fsSL --retry 2 --max-time 90 -H 'Content-Type: text/plain;charset=utf-8' \
+               --data '{"action":"content"}' "$CHECKOUT_URL" -o /tmp/content.json \
+             && jq -e '.ok == true and (.banners | type == "array")' /tmp/content.json > /dev/null; then
+            cp /tmp/content.json _site/data/content.json
+          else
+            echo "::warning::ดึงแบนเนอร์ไม่สำเร็จ ใช้ข้อมูลเดิม"
+            curl -fsSL --max-time 30 "$SITE_URL/data/content.json" -o _site/data/content.json || rm -f _site/data/content.json
+          fi
+          # รอบตั้งเวลา: ขึ้นเว็บใหม่เฉพาะตอนข้อมูลต่างจากที่อยู่บนเว็บ (ไม่นับเวลา updatedAt)
+          changed=true
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            changed=false
+            for f in catalog content; do
+              [ -f "_site/data/$f.json" ] || continue
+              live=$(curl -fsSL --max-time 30 "$SITE_URL/data/$f.json?t=$(date +%s)" | jq -cS 'del(.updatedAt)' 2>/dev/null || echo none)
+              new=$(jq -cS 'del(.updatedAt)' "_site/data/$f.json")
+              [ "$live" = "$new" ] || changed=true
+            done
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "catalog_ok=$ok changed=$changed"
       - uses: actions/upload-pages-artifact@v3
+        if: steps.data.outputs.changed == 'true'
         with:
           path: _site
       - uses: actions/deploy-pages@v4
+        if: steps.data.outputs.changed == 'true'
