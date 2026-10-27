@@ -1,4 +1,7 @@
 # แก้โค้ด meraofficial.co: เร็วขึ้น + ถามข้อมูลสมาชิกครั้งเดียว
+> **อัปเดต:** ไม่ต้องติดตั้ง `publish-snapshot.gs` แล้ว GitHub Actions (`.github/workflows/pages.yml`) ดึงข้อมูลจาก Apps Script มาเก็บเป็น `data/catalog.json` และ `data/content.json` ทุก 10 นาทีเอง ไม่ต้องใช้ token และไม่ต้องแก้ Apps Script
+> หน้าหลักใช้ไฟล์ชุดใหม่แล้ว ถ้าต้องย้อนกลับ แก้ `index.html` ใน zip กลับไปใช้ `app.35fb4581.js`, `checkout.c3b75fab.js`, `app.00ce9518.css` (ไฟล์เดิมยังอยู่)
+
 
 ใช้คู่กับ `publish-snapshot.gs` (สร้าง `data/catalog.json` และ `data/content.json` ใน repo)
 
