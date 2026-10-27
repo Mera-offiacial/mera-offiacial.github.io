@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Unzip site
         run: mkdir _site && unzip -q meracatalogue-site.zip -d _site && touch _site/.nojekyll
+      - name: Add data snapshot (data/catalog.json, data/content.json)
+        run: if [ -d data ]; then mkdir -p _site/data && cp -r data/. _site/data/; fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
