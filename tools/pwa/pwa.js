@@ -128,3 +128,174 @@
   }
   window.addEventListener('scroll', onScroll, { passive: true });
 })();
+
+/* =====================================================================
+ * LINE ในโหมดแอป (เปิดจากไอคอนบนหน้าจอ)
+ *
+ * ปัญหา: ในแอปที่ติดตั้งจากเว็บ การล็อกอิน LINE ต้องออกไปหน้า LINE แล้ว "ไม่กลับมาที่แอป"
+ * (iPhone เปิดต่อใน Safari/LINE ซึ่งเก็บข้อมูลแยกกับแอป) → ค้าง ต้องรีเฟรช และดูออเดอร์ไม่ได้
+ *
+ * ทางแก้: ในโหมดแอป ไม่พาไปหน้าล็อกอินอีก แต่เปิดเรื่องนั้นต่อใน "แอป LINE" (LIFF)
+ * ซึ่งยืนยันตัวตนให้อัตโนมัติ ไม่ต้องล็อกอิน
+ *   - ออเดอร์ของฉัน → เปิดหน้าออเดอร์ใน LINE
+ *   - ซื้อ / ตะกร้า / จองดีล → เปิดใน LINE พร้อมสินค้าที่เลือกไว้ ทำต่อได้ทันที
+ * เปิดผ่านลิงก์ปกติ (Safari, Chrome, LINE) ทำงานเหมือนเดิมทุกอย่าง
+ * ===================================================================== */
+(function () {
+  'use strict';
+  var LIFF_ID = '2011928469-icqhLzdN';
+  var qs = new URLSearchParams(location.search);
+
+  function T(th, en) { var l = ''; try { l = localStorage.getItem('mera-lang') || ''; } catch (e) {} return /^en/i.test(l) ? en : th; }
+  function cleanUrl(keys) {
+    try {
+      var u = new URL(location.href); keys.forEach(function (k) { u.searchParams.delete(k); });
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    } catch (e) {}
+  }
+
+  // --- 1) ขากลับ: เปิดใน LINE พร้อมสินค้าที่เลือก (?mc=...) → ให้ระบบสั่งซื้อทำต่อเอง
+  //     (ต้องรันก่อน checkout.js จึงโหลดไฟล์นี้แบบไม่ defer)
+  var mc = qs.get('mc');
+  if (mc) {
+    try { JSON.parse(mc); sessionStorage.setItem('mc_resume', mc); } catch (e) {}
+    cleanUrl(['mc']);
+  }
+  var wantOrders = qs.get('mera') === 'orders';
+  if (wantOrders) cleanUrl(['mera']);
+
+  function whenReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn();
+  }
+  function token() { try { return window.liff && liff.getIDToken && liff.getIDToken(); } catch (e) { return ''; } }
+
+  if (wantOrders) whenReady(function () {
+    var n = 0;
+    (function wait() {
+      if (window.MeraCheckout && (token() || n > 40)) return window.MeraCheckout.openOrders();
+      n++; setTimeout(wait, 250);
+    })();
+  });
+
+  // --- 2) โหมดแอปเท่านั้น
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (!standalone) return;
+
+  var intent = { kind: 'home' };   // ลูกค้ากำลังจะทำอะไร (ใช้สร้างลิงก์เปิดใน LINE)
+
+  function lineUrl() {
+    var q = '';
+    if (intent.kind === 'orders') q = '?mera=orders';
+    else if (intent.kind === 'order' && intent.id) q = '?order=' + encodeURIComponent(intent.id);
+    else if (intent.kind === 'checkout' || intent.kind === 'deal') {
+      var items = (intent.items || []).map(function (x) { var o = {}; for (var k in x) if (k !== 'img') o[k] = x[k]; return o; });
+      var s = JSON.stringify({ cart: !!intent.cart, items: items, deal: intent.deal || '' });
+      if (s.length < 6000) q = '?mc=' + encodeURIComponent(s);
+    }
+    return 'https://liff.line.me/' + LIFF_ID + q;
+  }
+
+  var LINE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 3.5C6.8 3.5 2.6 6.9 2.6 11.1c0 3.7 3.3 6.9 7.8 7.5.3.1.7.2.8.5.1.2.1.6 0 .9l-.1.8c0 .2-.2.9.8.5s5.5-3.3 7.5-5.6c1.4-1.5 2-3 2-4.6 0-4.2-4.2-7.6-9.4-7.6z"/></svg>';
+  var sheet = null;
+
+  function css() {
+    if (document.getElementById('mera-line-css')) return;
+    var s = document.createElement('style'); s.id = 'mera-line-css';
+    s.textContent =
+      '#mera-line{position:fixed;inset:0;z-index:10001;display:flex;align-items:flex-end;justify-content:center;background:rgba(42,10,20,.45);opacity:0;transition:opacity .2s}' +
+      '#mera-line.on{opacity:1}' +
+      '#mera-line .s{width:100%;max-width:520px;background:#FFFBED;border-radius:24px 24px 0 0;padding:22px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;' +
+      'font:14px/1.5 Poppins,Prompt,system-ui,sans-serif;color:#2a0a14;transform:translateY(30px);transition:transform .25s}' +
+      '#mera-line.on .s{transform:none}' +
+      '#mera-line img{width:56px;height:56px;border-radius:14px;align-self:center}' +
+      '#mera-line h2{margin:0;font-size:18px;font-weight:600;text-align:center;color:#841132}' +
+      '#mera-line p{margin:0 0 4px;text-align:center;color:#5e2a37;font-size:14px}' +
+      '#mera-line .go{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;background:#06C755;color:#fff;font-weight:700;font-size:15px;min-height:50px;text-decoration:none}' +
+      '#mera-line .no{border:0;background:none;color:#841132;font:600 14px Poppins,Prompt,system-ui,sans-serif;min-height:44px;cursor:pointer}';
+    document.head.appendChild(s);
+  }
+
+  function closeSheet() {
+    if (!sheet) return;
+    var n = sheet; sheet = null; n.classList.remove('on');
+    setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 250);
+  }
+
+  function openSheet() {
+    if (sheet) return;
+    css();
+    var title, text, btn;
+    if (intent.kind === 'orders' || intent.kind === 'order') {
+      title = T('ดูออเดอร์ใน LINE', 'View orders in LINE');
+      text = T('ออเดอร์ผูกกับบัญชี LINE ของคุณ<br>เปิดใน LINE ได้เลย ไม่ต้องล็อกอิน', 'Your orders are linked to your LINE account. Open in LINE to see them, no sign-in needed.');
+      btn = T('เปิดออเดอร์ใน LINE', 'Open orders in LINE');
+    } else if (intent.kind === 'checkout' || intent.kind === 'deal') {
+      title = T('สั่งซื้อต่อใน LINE', 'Continue in LINE');
+      text = T('LINE ยืนยันตัวตนให้อัตโนมัติ<br>สินค้าที่เลือกไว้จะรออยู่ในหน้าสั่งซื้อ', 'LINE signs you in automatically. Your selected items will be waiting at checkout.');
+      btn = T('สั่งซื้อต่อใน LINE', 'Continue in LINE');
+    } else {
+      title = T('เข้าสู่ระบบด้วย LINE', 'Sign in with LINE');
+      text = T('เปิด Mera ใน LINE เพื่อเข้าสู่ระบบอัตโนมัติ', 'Open Mera in LINE to sign in automatically.');
+      btn = T('เปิดใน LINE', 'Open in LINE');
+    }
+    sheet = document.createElement('div');
+    sheet.id = 'mera-line';
+    sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', title);
+    sheet.innerHTML = '<div class="s"><img src="/icons/icon-192.png" alt=""><h2>' + title + '</h2><p>' + text + '</p>' +
+      '<a class="go" href="' + lineUrl() + '">' + LINE_SVG + btn + '</a>' +
+      '<button class="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button></div>';
+    sheet.addEventListener('click', function (e) {
+      if (e.target === sheet || (e.target.closest && e.target.closest('.no'))) {
+        closeSheet();
+        try { if (window.MeraCheckout && window.MeraCheckout.close) window.MeraCheckout.close(); } catch (er) {}
+      } else if (e.target.closest && e.target.closest('.go')) {
+        setTimeout(closeSheet, 800);
+        try { if (window.MeraCheckout && window.MeraCheckout.close) window.MeraCheckout.close(); } catch (er) {}
+      }
+    });
+    document.body.appendChild(sheet);
+    requestAnimationFrame(function () { requestAnimationFrame(function () { if (sheet) sheet.classList.add('on'); }); });
+  }
+
+  // liff.login() ในโหมดแอป → แสดงหน้าต่าง "เปิดใน LINE" แทนการออกไปหน้าล็อกอิน
+  function patchLiff() {
+    var l = window.liff;
+    if (!l || !l.login || l.__meraPatched) return !!(l && l.__meraPatched);
+    l.login = function () {
+      try { var r = JSON.parse(sessionStorage.getItem('mc_resume') || 'null'); sessionStorage.removeItem('mc_resume');
+        if (r && (r.items && r.items.length || r.deal)) intent = { kind: r.deal ? 'deal' : 'checkout', items: r.items, cart: r.cart, deal: r.deal };
+      } catch (e) {}
+      openSheet();
+    };
+    l.__meraPatched = true;
+    return true;
+  }
+  (function poll(n) { if (!patchLiff() && n < 600) setTimeout(function () { poll(n + 1); }, 100); })(0);
+
+  function notLoggedIn() {
+    try { return !!(window.liff && liff.isLoggedIn && !liff.isLoggedIn() && !token()); } catch (e) { return false; }
+  }
+
+  // จำว่าลูกค้ากดอะไร และถ้ารู้แล้วว่ายังไม่ล็อกอิน เปิดหน้าต่าง LINE ทันที (ไม่ต้องรอหมุน 5 วินาที)
+  whenReady(function () {
+    var MC = window.MeraCheckout; if (!MC) return;
+    function wrap(name, mk, guard) {
+      var orig = MC[name]; if (typeof orig !== 'function') return;
+      MC[name] = function () {
+        var args = arguments, it = mk.apply(null, args);
+        if (it) intent = it;
+        if (it && (!guard || guard.apply(null, args)) && notLoggedIn()) { openSheet(); return; }
+        return orig.apply(this, args);
+      };
+    }
+    wrap('openOrders', function () { return { kind: 'orders' }; });
+    wrap('openOrder', function (id) { return { kind: 'order', id: id }; });
+    wrap('open', function (item) { return { kind: 'checkout', items: item ? [item] : [], cart: false }; });
+    wrap('openCart', function (items) {
+      var cart = items; if (!Array.isArray(cart)) { try { cart = JSON.parse(localStorage.getItem('mera_cart_v1') || '[]'); } catch (e) { cart = []; } }
+      return { kind: 'checkout', items: cart, cart: true };
+    });
+    wrap('add', function (item, opts) { return opts && opts.open === false ? null : { kind: 'checkout', items: item ? [item] : [], cart: true }; });
+    wrap('requireMember', function (onReady, dealUrl) { return { kind: 'deal', deal: dealUrl || '', items: [] }; });
+  });
+})();
