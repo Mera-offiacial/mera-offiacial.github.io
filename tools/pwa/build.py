@@ -43,7 +43,9 @@ for page in ['index.html']:
     h = re.sub(r'<!--PWA-->.*?<!--/PWA-->\n', '', h, flags=re.S)
     h = re.sub(r'<script src="assets/pwa\.[0-9a-f]{8}\.js" defer></script>\n', '', h)
     h = h.replace('<link rel="icon" href="favicon.ico">\n', '<link rel="icon" href="favicon.ico">\n<!--PWA-->\n' + TAGS + '<!--/PWA-->\n', 1)
-    h = h.replace('</body>', f'<script src="assets/{name}" defer></script>\n</body>', 1)
+    # not deferred, before checkout.js: must restore an order handed over from the app before checkout starts
+    h = re.sub(r'<script src="assets/pwa\.[0-9a-f]{8}\.js"></script>\n', '', h)
+    h = re.sub(r'(<script src="assets/checkout\.)', f'<script src="assets/{name}"></script>\n' + r'\1', h, count=1)
     assert '<!--PWA-->' in h and name in h
     open(p, 'w', encoding='utf-8').write(h)
 print('built', name)
