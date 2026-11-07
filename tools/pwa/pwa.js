@@ -129,30 +129,60 @@
   window.addEventListener('scroll', onScroll, { passive: true });
 })();
 
+
 /* =====================================================================
- * LINE ในโหมดแอป (เปิดจากไอคอนบนหน้าจอ)
+ * LINE ในโหมดแอป (เปิดจากไอคอนบนหน้าจอ) — เชื่อม LINE ครั้งเดียว แล้วจำไว้
  *
- * ปัญหา: ในแอปที่ติดตั้งจากเว็บ การล็อกอิน LINE ต้องออกไปหน้า LINE แล้ว "ไม่กลับมาที่แอป"
- * (iPhone เปิดต่อใน Safari/LINE ซึ่งเก็บข้อมูลแยกกับแอป) → ค้าง ต้องรีเฟรช และดูออเดอร์ไม่ได้
+ * ปัญหาเดิม: ในแอปที่ติดตั้งจากเว็บ การล็อกอิน LINE ต้องออกไปหน้า LINE แล้ว "ไม่กลับมาที่แอป"
+ * (iPhone เปิดต่อใน Safari/LINE ซึ่งเก็บข้อมูลแยกกับแอป) → เดิมต้องเปิดใน LINE ทุกครั้ง
  *
- * ทางแก้: ในโหมดแอป ไม่พาไปหน้าล็อกอินอีก แต่เปิดเรื่องนั้นต่อใน "แอป LINE" (LIFF)
- * ซึ่งยืนยันตัวตนให้อัตโนมัติ ไม่ต้องล็อกอิน
- *   - ออเดอร์ของฉัน → เปิดหน้าออเดอร์ใน LINE
- *   - ซื้อ / ตะกร้า / จองดีล → เปิดใน LINE พร้อมสินค้าที่เลือกไว้ ทำต่อได้ทันที
+ * ตอนนี้: ครั้งแรกกด "เชื่อม LINE" → ยืนยันในแอป LINE 1 ครั้ง → กลับมาที่แอป Mera
+ * แอปได้ "บัตรผ่าน" (Apps Script Inventory + GB ออกให้ action appPairLink / appPairPoll)
+ * เก็บไว้ในเครื่อง แล้วใช้แทน token ของ LINE ไปจนหมดอายุ (APP_SESSION_DAYS, ค่าเริ่มต้น 180 วัน)
+ * ไม่ต้องแก้ app.js / checkout.js: ไฟล์นี้ปรับ liff.isLoggedIn / getIDToken / getProfile ให้ใช้บัตรผ่าน
+ *
+ * ขาในแอป LINE: เปิด liff.line.me/<LIFF>?pair=<รหัส> → ลูกค้ากด "เชื่อมเลย" → appPairLink
  * เปิดผ่านลิงก์ปกติ (Safari, Chrome, LINE) ทำงานเหมือนเดิมทุกอย่าง
  * ===================================================================== */
 (function () {
   'use strict';
   var LIFF_ID = '2011928469-icqhLzdN';
+  var SES_KEY = 'mera-app-session';
+  var PAIR_KEY = 'mera-app-pair';
   var qs = new URLSearchParams(location.search);
 
   function T(th, en) { var l = ''; try { l = localStorage.getItem('mera-lang') || ''; } catch (e) {} return /^en/i.test(l) ? en : th; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function cleanUrl(keys) {
     try {
       var u = new URL(location.href); keys.forEach(function (k) { u.searchParams.delete(k); });
       history.replaceState(history.state, '', u.pathname + u.search + u.hash);
     } catch (e) {}
   }
+  function apiUrl() { return (window.MERA_CHECKOUT && window.MERA_CHECKOUT.api) || ''; }
+  function post(body) {
+    // text/plain → ไม่ต้องมี preflight (เหมือน checkout.js)
+    return fetch(apiUrl(), { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+  }
+  function whenReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn();
+  }
+  function lineToken() { try { return window.liff && liff.getIDToken && liff.getIDToken(); } catch (e) { return ''; } }
+
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+
+  // ---------- บัตรผ่านของแอป (เก็บในเครื่อง) ----------
+  function readSession() {
+    try {
+      var s = JSON.parse(localStorage.getItem(SES_KEY) || 'null');
+      if (s && s.token && Number(s.exp) > Date.now() + 60000) return s;
+      if (s) localStorage.removeItem(SES_KEY);
+    } catch (e) {}
+    return null;
+  }
+  function writeSession(s) { try { localStorage.setItem(SES_KEY, JSON.stringify(s)); } catch (e) {} }
+  function clearSession() { try { localStorage.removeItem(SES_KEY); } catch (e) {} }
+  var session = standalone ? readSession() : null;
 
   // --- 1) ขากลับ: เปิดใน LINE พร้อมสินค้าที่เลือก (?mc=...) → ให้ระบบสั่งซื้อทำต่อเอง
   //     (ต้องรันก่อน checkout.js จึงโหลดไฟล์นี้แบบไม่ defer)
@@ -163,11 +193,7 @@
   }
   var wantOrders = qs.get('mera') === 'orders';
   if (wantOrders) cleanUrl(['mera']);
-
-  function whenReady(fn) {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn();
-  }
-  function token() { try { return window.liff && liff.getIDToken && liff.getIDToken(); } catch (e) { return ''; } }
+  function token() { return (session && session.token) || lineToken(); }
 
   if (wantOrders) whenReady(function () {
     var n = 0;
@@ -176,24 +202,6 @@
       n++; setTimeout(wait, 250);
     })();
   });
-
-  // --- 2) โหมดแอปเท่านั้น
-  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
-  if (!standalone) return;
-
-  var intent = { kind: 'home' };   // ลูกค้ากำลังจะทำอะไร (ใช้สร้างลิงก์เปิดใน LINE)
-
-  function lineUrl() {
-    var q = '';
-    if (intent.kind === 'orders') q = '?mera=orders';
-    else if (intent.kind === 'order' && intent.id) q = '?order=' + encodeURIComponent(intent.id);
-    else if (intent.kind === 'checkout' || intent.kind === 'deal') {
-      var items = (intent.items || []).map(function (x) { var o = {}; for (var k in x) if (k !== 'img') o[k] = x[k]; return o; });
-      var s = JSON.stringify({ cart: !!intent.cart, items: items, deal: intent.deal || '' });
-      if (s.length < 6000) q = '?mc=' + encodeURIComponent(s);
-    }
-    return 'https://liff.line.me/' + LIFF_ID + q;
-  }
 
   var LINE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 3.5C6.8 3.5 2.6 6.9 2.6 11.1c0 3.7 3.3 6.9 7.8 7.5.3.1.7.2.8.5.1.2.1.6 0 .9l-.1.8c0 .2-.2.9.8.5s5.5-3.3 7.5-5.6c1.4-1.5 2-3 2-4.6 0-4.2-4.2-7.6-9.4-7.6z"/></svg>';
   var sheet = null;
@@ -210,8 +218,11 @@
       '#mera-line img{width:56px;height:56px;border-radius:14px;align-self:center}' +
       '#mera-line h2{margin:0;font-size:18px;font-weight:600;text-align:center;color:#841132}' +
       '#mera-line p{margin:0 0 4px;text-align:center;color:#5e2a37;font-size:14px}' +
-      '#mera-line .go{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;background:#06C755;color:#fff;font-weight:700;font-size:15px;min-height:50px;text-decoration:none}' +
-      '#mera-line .no{border:0;background:none;color:#841132;font:600 14px Poppins,Prompt,system-ui,sans-serif;min-height:44px;cursor:pointer}';
+      '#mera-line .go{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;background:#06C755;color:#fff;font:700 15px Poppins,Prompt,system-ui,sans-serif;min-height:50px;text-decoration:none;cursor:pointer}' +
+      '#mera-line .go[disabled]{opacity:.6}' +
+      '#mera-line .no{border:0;background:none;color:#841132;font:600 14px Poppins,Prompt,system-ui,sans-serif;min-height:44px;cursor:pointer}' +
+      '#mera-line .spin{width:26px;height:26px;border:3px solid #f0d9c9;border-top-color:#841132;border-radius:50%;align-self:center;animation:meraspin 0.9s linear infinite}' +
+      '@keyframes meraspin{to{transform:rotate(360deg)}}';
     document.head.appendChild(s);
   }
 
@@ -221,70 +232,237 @@
     setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 250);
   }
 
-  function openSheet() {
-    if (sheet) return;
+  function showSheet(html, onClick) {
     css();
-    var title, text, btn;
-    if (intent.kind === 'orders' || intent.kind === 'order') {
-      title = T('ดูออเดอร์ใน LINE', 'View orders in LINE');
-      text = T('ออเดอร์ผูกกับบัญชี LINE ของคุณ<br>เปิดใน LINE ได้เลย ไม่ต้องล็อกอิน', 'Your orders are linked to your LINE account. Open in LINE to see them, no sign-in needed.');
-      btn = T('เปิดออเดอร์ใน LINE', 'Open orders in LINE');
-    } else if (intent.kind === 'checkout' || intent.kind === 'deal') {
-      title = T('สั่งซื้อต่อใน LINE', 'Continue in LINE');
-      text = T('LINE ยืนยันตัวตนให้อัตโนมัติ<br>สินค้าที่เลือกไว้จะรออยู่ในหน้าสั่งซื้อ', 'LINE signs you in automatically. Your selected items will be waiting at checkout.');
-      btn = T('สั่งซื้อต่อใน LINE', 'Continue in LINE');
-    } else {
-      title = T('เข้าสู่ระบบด้วย LINE', 'Sign in with LINE');
-      text = T('เปิด Mera ใน LINE เพื่อเข้าสู่ระบบอัตโนมัติ', 'Open Mera in LINE to sign in automatically.');
-      btn = T('เปิดใน LINE', 'Open in LINE');
+    if (!sheet) {
+      sheet = document.createElement('div');
+      sheet.id = 'mera-line';
+      sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true');
+      document.body.appendChild(sheet);
+      requestAnimationFrame(function () { requestAnimationFrame(function () { if (sheet) sheet.classList.add('on'); }); });
     }
-    sheet = document.createElement('div');
-    sheet.id = 'mera-line';
-    sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', title);
-    sheet.innerHTML = '<div class="s"><img src="/icons/icon-192.png" alt=""><h2>' + title + '</h2><p>' + text + '</p>' +
-      '<a class="go" href="' + lineUrl() + '">' + LINE_SVG + btn + '</a>' +
-      '<button class="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button></div>';
-    sheet.addEventListener('click', function (e) {
-      if (e.target === sheet || (e.target.closest && e.target.closest('.no'))) {
-        closeSheet();
-        try { if (window.MeraCheckout && window.MeraCheckout.close) window.MeraCheckout.close(); } catch (er) {}
-      } else if (e.target.closest && e.target.closest('.go')) {
-        setTimeout(closeSheet, 800);
-        try { if (window.MeraCheckout && window.MeraCheckout.close) window.MeraCheckout.close(); } catch (er) {}
-      }
-    });
-    document.body.appendChild(sheet);
-    requestAnimationFrame(function () { requestAnimationFrame(function () { if (sheet) sheet.classList.add('on'); }); });
+    sheet.innerHTML = '<div class="s"><img src="/icons/icon-192.png" alt="">' + html + '</div>';
+    sheet.onclick = function (e) { onClick(e, e.target.closest && e.target.closest('[data-a]')); };
   }
 
-  // liff.login() ในโหมดแอป → แสดงหน้าต่าง "เปิดใน LINE" แทนการออกไปหน้าล็อกอิน
-  function patchLiff() {
-    var l = window.liff;
-    if (!l || !l.login || l.__meraPatched) return !!(l && l.__meraPatched);
+  /* =================================================================
+   * ขา A: ในแอป LINE / เบราว์เซอร์ (ไม่ใช่โหมดแอป) — ลูกค้ายืนยันการเชื่อม
+   * ================================================================= */
+  var pairCode = qs.get('pair');
+  if (!standalone && pairCode) {
+    if (!/^[A-Za-z0-9_-]{32,64}$/.test(pairCode)) return;
+    whenReady(function () {
+      var n = 0;
+      (function wait() {
+        var l = window.liff, tok = lineToken();
+        if (tok) return confirmPair(tok);
+        n++;
+        // รอ app.js เปิด LIFF ~15 วินาที · ถ้ายังไม่ล็อกอิน (เปิดนอกแอป LINE) → ล็อกอิน LINE แล้วกลับมาที่ลิงก์นี้
+        if (n > 60) {
+          try { if (l && l.isLoggedIn && !l.isLoggedIn()) return l.login({ redirectUri: location.origin + '/?pair=' + encodeURIComponent(pairCode) }); } catch (e) {}
+          return;
+        }
+        setTimeout(wait, 250);
+      })();
+    });
+    return;
+  }
+
+  function confirmPair(tok) {
+    function ask(err) {
+      showSheet(
+        '<h2>' + T('เชื่อมแอป Mera กับ LINE นี้', 'Connect the Mera app to this LINE') + '</h2>' +
+        '<p>' + T('ใช้เมื่อคุณกด "เชื่อม LINE" จากแอป Mera บนมือถือของคุณเอง<br>ถ้าไม่ได้กดเอง ให้กด "ยกเลิก"', 'Only continue if you tapped "Connect LINE" in your own Mera app.<br>If not, tap "Cancel".') + '</p>' +
+        (err ? '<p style="color:#b3261e">' + esc(err) + '</p>' : '') +
+        '<button class="go" data-a="ok" type="button">' + LINE_SVG + T('เชื่อมเลย', 'Connect') + '</button>' +
+        '<button class="no" data-a="no" type="button">' + T('ยกเลิก', 'Cancel') + '</button>',
+        function (e, a) {
+          var act = a && a.getAttribute('data-a');
+          if (act === 'no' || e.target === sheet) return closeSheet();
+          if (act !== 'ok') return;
+          a.disabled = true;
+          post({ action: 'appPairLink', idToken: lineToken() || tok, code: pairCode }).then(function (r) {
+            if (r && r.ok) done(); else ask((r && r.error) || T('เชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง', 'Could not connect. Please try again.'));
+          }).catch(function () { ask(T('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง', 'Network error. Please try again.')); });
+        });
+    }
+    function done() {
+      cleanUrl(['pair']);
+      showSheet(
+        '<h2>' + T('เชื่อมเรียบร้อยแล้ว ✓', 'Connected ✓') + '</h2>' +
+        '<p>' + T('กลับไปที่แอป Mera ได้เลย<br>ครั้งต่อไปสั่งซื้อและดูออเดอร์ในแอปได้ทันที', 'Go back to the Mera app.<br>From now on you can order and see your orders right there.') + '</p>' +
+        '<button class="no" data-a="close" type="button">' + T('ปิด', 'Close') + '</button>',
+        function (e, a) {
+          if ((a && a.getAttribute('data-a') === 'close') || e.target === sheet) {
+            closeSheet();
+            try { if (window.liff && liff.isInClient && liff.isInClient() && liff.closeWindow) liff.closeWindow(); } catch (er) {}
+          }
+        });
+    }
+    ask('');
+  }
+
+  // ---------- ที่เหลือเฉพาะโหมดแอป ----------
+  if (!standalone) return;
+
+  // --- ปรับ liff ให้ใช้บัตรผ่านของแอป (app.js / checkout.js เห็นเหมือนล็อกอิน LINE แล้ว)
+  var intent = { kind: 'home' };   // ลูกค้ากำลังจะทำอะไร (ใช้ทำต่อหลังเชื่อมเสร็จ)
+  function decoded() { return { sub: session.sub, name: session.name || '', picture: session.picture || '' }; }
+  function patchLiff(l) {
+    if (!l || typeof l !== 'object' || l.__meraApp) return;
+    var orig = {};
+    ['isLoggedIn', 'getIDToken', 'getDecodedIDToken', 'getProfile', 'logout', 'login'].forEach(function (k) { orig[k] = l[k]; });
+    l.isLoggedIn = function () { return !!session || (orig.isLoggedIn ? orig.isLoggedIn.apply(l, arguments) : false); };
+    l.getIDToken = function () { return session ? session.token : (orig.getIDToken ? orig.getIDToken.apply(l, arguments) : null); };
+    l.getDecodedIDToken = function () { return session ? decoded() : (orig.getDecodedIDToken ? orig.getDecodedIDToken.apply(l, arguments) : null); };
+    l.getProfile = function () {
+      if (session) return Promise.resolve({ userId: session.sub, displayName: session.name || '', pictureUrl: session.picture || '' });
+      return orig.getProfile ? orig.getProfile.apply(l, arguments) : Promise.reject(new Error('no profile'));
+    };
+    l.logout = function () { session = null; clearSession(); try { return orig.logout && orig.logout.apply(l, arguments); } catch (e) {} };
+    // liff.login() ในโหมดแอป → หน้าต่าง "เชื่อม LINE" แทนการออกไปหน้าล็อกอิน
     l.login = function () {
       try { var r = JSON.parse(sessionStorage.getItem('mc_resume') || 'null'); sessionStorage.removeItem('mc_resume');
         if (r && (r.items && r.items.length || r.deal)) intent = { kind: r.deal ? 'deal' : 'checkout', items: r.items, cart: r.cart, deal: r.deal };
       } catch (e) {}
-      openSheet();
+      if (session) { session = null; clearSession(); }   // ระบบขอให้ล็อกอินใหม่ = บัตรผ่านใช้ไม่ได้แล้ว
+      openPair();
     };
-    l.__meraPatched = true;
-    return true;
+    l.__meraApp = true;
   }
-  (function poll(n) { if (!patchLiff() && n < 600) setTimeout(function () { poll(n + 1); }, 100); })(0);
+  // checkout.js ขอ token ผ่านตัวนี้ (ใช้ได้ทันที แม้ LINE SDK ยังโหลดไม่เสร็จ)
+  try {
+    window.MERA_CHECKOUT = window.MERA_CHECKOUT || {};
+    window.MERA_CHECKOUT.getIdToken = function () { return session ? session.token : lineToken(); };
+  } catch (e) {}
+  // จับ window.liff ทันทีที่ SDK โหลด (ก่อน app.js เรียก liff.init)
+  (function hook() {
+    var cur = window.liff;
+    try {
+      Object.defineProperty(window, 'liff', {
+        configurable: true, enumerable: true,
+        get: function () { return cur; },
+        set: function (v) { cur = v; patchLiff(v); },
+      });
+    } catch (e) {}
+    if (cur) patchLiff(cur);
+    (function poll(n) { patchLiff(window.liff); if (n < 600) setTimeout(function () { poll(n + 1); }, 100); })(0);
+  })();
 
-  function notLoggedIn() {
-    try { return !!(window.liff && liff.isLoggedIn && !liff.isLoggedIn() && !token()); } catch (e) { return false; }
+  // ระบบตอบว่าบัตรผ่านใช้ไม่ได้ (หมดอายุ / ถูกยกเลิก) → ลบทิ้ง แล้วให้เชื่อมใหม่ครั้งหน้า
+  (function watchFetch() {
+    var f = window.fetch; if (!f) return;
+    window.fetch = function (input, init) {
+      var p = f.apply(this, arguments);
+      try {
+        var body = init && typeof init.body === 'string' ? init.body : '';
+        if (session && body.indexOf(session.token) >= 0) {
+          p.then(function (res) {
+            res.clone().json().then(function (j) {
+              if (j && j.ok === false && (j.code === 'AUTH' || j.error === 'login_expired')) { session = null; clearSession(); }
+            }).catch(function () {});
+          }).catch(function () {});
+        }
+      } catch (e) {}
+      return p;
+    };
+  })();
+
+  // --- หน้าต่าง "เชื่อม LINE ครั้งเดียว" + รอผลจากแอป LINE
+  function randomCode() {
+    var a = new Uint8Array(24);
+    try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); }
+    return btoa(String.fromCharCode.apply(null, a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function readPair() {
+    try { var p = JSON.parse(localStorage.getItem(PAIR_KEY) || 'null'); if (p && p.code && Date.now() - p.at < 9 * 60000) return p; } catch (e) {}
+    return null;
+  }
+  function savePair(p) { try { if (p) localStorage.setItem(PAIR_KEY, JSON.stringify(p)); else localStorage.removeItem(PAIR_KEY); } catch (e) {} }
+
+  var polling = null;
+  function startPolling(p) {
+    if (polling) return;
+    var busy = false;
+    polling = setInterval(function () {
+      if (document.hidden || busy) return;
+      if (Date.now() - p.at > 10 * 60000) { stopPolling(); savePair(null); if (sheet) openPair(); return; }
+      busy = true;
+      post({ action: 'appPairPoll', code: p.code }).then(function (r) {
+        busy = false;
+        if (r && r.ok && r.token) paired(r, p);
+      }).catch(function () { busy = false; });
+    }, 2000);
+  }
+  function stopPolling() { if (polling) { clearInterval(polling); polling = null; } }
+
+  function paired(r, p) {
+    stopPolling(); savePair(null);
+    session = { token: r.token, exp: r.exp, sub: r.sub, name: r.name || '', picture: r.picture || '' };
+    writeSession(session);
+    showSheet('<h2>' + T('เชื่อม LINE เรียบร้อย ✓', 'LINE connected ✓') + '</h2><p>' + T('ครั้งต่อไปไม่ต้องเชื่อมอีก', 'You will stay signed in.') + '</p>', function () {});
+    // โหลดหน้าใหม่ให้ทุกส่วนเห็นว่าล็อกอินแล้ว แล้วทำต่อจากที่ลูกค้ากดไว้
+    var it = p.intent || { kind: 'home' }, q = '';
+    if (it.kind === 'orders') q = '?mera=orders';
+    else if (it.kind === 'order' && it.id) q = '?order=' + encodeURIComponent(it.id);
+    else if ((it.kind === 'checkout' || it.kind === 'deal') && ((it.items && it.items.length) || it.deal)) {
+      var s = JSON.stringify({ cart: !!it.cart, items: it.items || [], deal: it.deal || '' });
+      if (s.length < 6000) q = '?mc=' + encodeURIComponent(s);
+    }
+    setTimeout(function () { location.replace(location.pathname + q); }, 900);
   }
 
-  // จำว่าลูกค้ากดอะไร และถ้ารู้แล้วว่ายังไม่ล็อกอิน เปิดหน้าต่าง LINE ทันที (ไม่ต้องรอหมุน 5 วินาที)
+  function slimIntent(it) {
+    var o = { kind: it.kind, id: it.id, cart: it.cart, deal: it.deal };
+    o.items = (it.items || []).map(function (x) { var y = {}; for (var k in x) if (k !== 'img') y[k] = x[k]; return y; });
+    return o;
+  }
+
+  function openPair() {
+    var p = readPair();
+    if (!p) { p = { code: randomCode(), at: Date.now(), intent: slimIntent(intent) }; savePair(p); }
+    else { p.intent = slimIntent(intent); savePair(p); }
+    var link = 'https://liff.line.me/' + LIFF_ID + '?pair=' + encodeURIComponent(p.code);
+    var waiting = !!p.opened;
+    showSheet(
+      '<h2>' + T('เชื่อม LINE ครั้งเดียว', 'Connect LINE once') + '</h2>' +
+      (waiting
+        ? '<div class="spin" aria-hidden="true"></div><p>' + T('กด "เชื่อมเลย" ในแอป LINE<br>แล้วกลับมาที่แอปนี้ ระบบจะไปต่อให้เอง', 'Tap "Connect" in LINE,<br>then come back here — we will continue automatically.') + '</p>'
+        : '<p>' + T('ยืนยันในแอป LINE 1 ครั้ง แล้วกลับมาที่แอปนี้<br>ครั้งต่อไปสั่งซื้อและดูออเดอร์ได้เลย ไม่ต้องเชื่อมอีก', 'Confirm once in the LINE app, then come back here.<br>After that you can order and see your orders without signing in again.') + '</p>') +
+      '<a class="go" data-a="go" href="' + link + '">' + LINE_SVG + (waiting ? T('เปิด LINE อีกครั้ง', 'Open LINE again') : T('เชื่อม LINE', 'Connect LINE')) + '</a>' +
+      '<button class="no" data-a="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button>',
+      function (e, a) {
+        var act = a && a.getAttribute('data-a');
+        if (act === 'no' || e.target === sheet) {
+          stopPolling(); closeSheet();
+          try { if (window.MeraCheckout && window.MeraCheckout.close) window.MeraCheckout.close(); } catch (er) {}
+        } else if (act === 'go') {
+          p.opened = true; savePair(p); startPolling(p);
+          setTimeout(function () { if (sheet && !session) openPair(); }, 600);   // เปลี่ยนเป็นหน้าจอ "รอยืนยัน"
+        }
+      });
+    if (waiting) startPolling(p);
+  }
+
+  // เปิดแอปกลับมาระหว่างรอ (เช่น iPhone ปิดแอปไปแล้ว) → ถามผลต่อ
+  (function resume() {
+    var p = readPair();
+    if (!session && p && p.opened) whenReady(function () { intent = p.intent || intent; openPair(); });
+  })();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && !session) { var p = readPair(); if (p && p.opened && !polling && sheet) startPolling(p); }
+  });
+
+  // จำว่าลูกค้ากดอะไร และถ้ายังไม่ได้เชื่อม LINE เปิดหน้าต่างเชื่อมทันที (ไม่ต้องรอหมุน 5 วินาที)
+  function notLoggedIn() { return !session && !lineToken(); }
   whenReady(function () {
     var MC = window.MeraCheckout; if (!MC) return;
-    function wrap(name, mk, guard) {
+    function wrap(name, mk) {
       var orig = MC[name]; if (typeof orig !== 'function') return;
       MC[name] = function () {
         var args = arguments, it = mk.apply(null, args);
         if (it) intent = it;
-        if (it && (!guard || guard.apply(null, args)) && notLoggedIn()) { openSheet(); return; }
+        if (it && notLoggedIn()) { openPair(); return; }
         return orig.apply(this, args);
       };
     }
