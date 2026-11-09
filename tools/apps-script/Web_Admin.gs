@@ -13,7 +13,7 @@
  *  - adminBanners / adminBannerSave / adminBannerDelete / adminUpload  จัดการแบนเนอร์และอัปโหลดรูป
  *  - adminTexts / adminTextSave  แก้ข้อความบนหน้า Catalog (ไทย / อังกฤษ) · ช่องว่าง = ใช้ข้อความเดิมของเว็บ
  *  - adminImages / adminImageSave  รูปสินค้าและโลโก้แบรนด์ที่แอดมินอัปโหลด (แท็บ Images) · ใช้แทนรูปจากชีตสินค้า/ฟอร์ม
- *      ส่งไปหน้า Catalog พร้อม content เป็น images: { products: {'แบรนด์|ชื่อสินค้า': [url…]}, brands: {'แบรนด์': url} }
+ *      ส่งไปหน้า Catalog พร้อม content เป็น images: { products: {'แบรนด์|ชื่อสินค้า': [url…]}, colors: {'แบรนด์|ชื่อสินค้า': {'สี': [url…]}}, brands: {'แบรนด์': url} }
  *  - ข้อมูลสินค้า (ตารางไซซ์ / รายละเอียด) ส่งไปพร้อม content อ่านจาก 2 ที่:
  *      1) แท็บ "Product Details" ในชีต Mera Admin (ทีมกรอก/แก้เองได้ ช่องไหนกรอก ใช้ช่องนั้นก่อน)
  *      2) แท็บ "Product Responses" ในชีต Mera Inventory (ฟอร์มที่แบรนด์กรอก) · อ่านเฉพาะคอลัมน์ข้อมูลสินค้า
@@ -252,28 +252,35 @@ function admSyncProductRows_() {
 
 /* ---------- รูปสินค้า / โลโก้แบรนด์ (แท็บ Images) ----------
  * Kind = product → Key = แบรนด์|ชื่อสินค้า (ตัวพิมพ์เล็ก) · Image URLs = ลิงก์รูป บรรทัดละ 1 รูป (รูปแรก = หน้าปก)
+ * Kind = color   → Key = แบรนด์|ชื่อสินค้า|สี             · รูปของสีนั้น (ลูกค้าเลือกสีนี้จะเห็นรูปชุดนี้ก่อน ตามด้วยรูป product)
  * Kind = brand   → Key = ชื่อแบรนด์ (ตัวพิมพ์เล็ก)     · Image URLs = ลิงก์โลโก้ 1 รูป
  * ลบแถว = กลับไปใช้รูปจากชีตสินค้า/ฟอร์ม */
 function admImgTab_() { return admSheet_().getSheetByName(ADM.IMG_TAB); }
 function admNorm_(v) { return String(v || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 function admReadImages_() {
-  const out = { products: {}, brands: {} }, sh = admImgTab_(), n = sh.getLastRow() - 1;
+  const out = { products: {}, colors: {}, brands: {} }, sh = admImgTab_(), n = sh.getLastRow() - 1;
   if (n < 1) return out;
   sh.getRange(2, 1, n, 3).getValues().forEach(r => {
     const kind = String(r[0] || '').trim().toLowerCase(), key = String(r[1] || '').trim();
     const urls = String(r[2] || '').split(/[\n,\s]+/).map(u => u.trim()).filter(u => /^https:\/\/\S+$/.test(u)).slice(0, ADM.IMG_MAX);
     if (!key || !urls.length) return;
     if (kind === 'product' && key.indexOf('|') > 0) { const i = key.indexOf('|'); out.products[admNorm_(key.slice(0, i)) + '|' + admNorm_(key.slice(i + 1))] = urls; }
+    else if (kind === 'color') {
+      const p = key.split('|'); if (p.length < 3) return;
+      const pk = admNorm_(p[0]) + '|' + admNorm_(p[1]), color = p.slice(2).join('|').trim();
+      (out.colors[pk] = out.colors[pk] || {})[color] = urls;
+    }
     else if (kind === 'brand') out.brands[admNorm_(key)] = urls[0];
   });
   return out;
 }
 function admSaveImage_(b) {
   const who = admRequire_(b);
-  const kind = b.kind === 'brand' ? 'brand' : b.kind === 'product' ? 'product' : '';
+  const kind = ['brand', 'product', 'color'].indexOf(b.kind) >= 0 ? b.kind : '';
   if (!kind) throw webErr_('BAD_IMAGE', 'ชนิดรูปไม่ถูกต้อง');
   let key = String(b.key || '').trim().slice(0, 300);
   if (kind === 'product') { const i = key.indexOf('|'); if (i < 1) throw webErr_('BAD_IMAGE', 'ไม่พบชื่อสินค้า'); key = admNorm_(key.slice(0, i)) + '|' + admNorm_(key.slice(i + 1)); }
+  else if (kind === 'color') { const p = key.split('|'); if (p.length < 3 || !p[2].trim()) throw webErr_('BAD_IMAGE', 'ไม่พบสีของสินค้า'); key = admNorm_(p[0]) + '|' + admNorm_(p[1]) + '|' + p.slice(2).join('|').trim(); }
   else key = admNorm_(key);
   if (!key) throw webErr_('BAD_IMAGE', 'ไม่พบชื่อแบรนด์');
   const urls = (Array.isArray(b.images) ? b.images : []).map(u => String(u || '').trim()).filter(Boolean);
@@ -284,7 +291,7 @@ function admSaveImage_(b) {
     const sh = admImgTab_(), n = sh.getLastRow() - 1;
     const rows = n > 0 ? sh.getRange(2, 1, n, 2).getValues() : [];
     let at = -1;
-    rows.forEach((r, i) => { if (String(r[0]).trim().toLowerCase() === kind && admNorm_(r[1]) === key) at = i + 2; });
+    rows.forEach((r, i) => { if (String(r[0]).trim().toLowerCase() === kind && admNorm_(r[1]) === admNorm_(key)) at = i + 2; });
     if (!list.length) { if (at > 0) sh.deleteRow(at); return; }
     const row = [kind, key, list.join('\n'), new Date(), who.by];
     if (at > 0) sh.getRange(at, 1, 1, row.length).setValues([row]); else sh.appendRow(row);

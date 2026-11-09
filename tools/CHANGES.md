@@ -249,3 +249,4 @@ const LIFF_ID = '2011928469-icqhLzdN';
 - `admin.html` → เมนูใหม่ "รูปสินค้าและโลโก้" อัปโหลดหลายรูป (ครอปจัตุรัสอัตโนมัติ หรือย่อเติมพื้นขาว) เรียงลำดับ ลบ บันทึก "กลับไปใช้รูปเดิม"
 - `assets/app.*.js` → อ่าน `images` จาก content (`products['แบรนด์|ชื่อสินค้า']` = รายการรูป, `brands['แบรนด์']` = โลโก้) ใช้แทนรูปจากชีต/ฟอร์ม/รูปเดิมในเว็บ
 - หลังบ้าน: `tools/apps-script/Web_Admin.gs` (เพิ่ม `adminImages`, `adminImageSave`, แท็บ Images ในชีต Mera Admin และส่ง `images` ไปกับ `content`) ต้องวางทับไฟล์ Web_Admin.gs ในโปรเจกต์ Apps Script "Inventory + GB" แล้ว Deploy → Manage deployments → แก้ deployment เดิม → New version (ห้ามสร้าง deployment ใหม่ ลิงก์จะเปลี่ยน)
+- เพิ่ม: รูปแยกตามสี · หน้าแอดมินกด "แยกรูปตามสี" ใต้สินค้าที่มีหลายสี · เก็บเป็น Kind = color, Key = แบรนด์|ชื่อสินค้า|สี · ส่งไปหน้าเว็บเป็น `images.colors` · ลูกค้าเลือกสีไหนเห็นรูปของสีนั้นก่อน ตามด้วยรูปชุด "ทุกสี"
