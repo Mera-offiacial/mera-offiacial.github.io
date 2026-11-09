@@ -64,6 +64,28 @@ jobs:
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "catalog_ok=$ok changed=$changed"
+      - name: Track first-seen dates for the NEW tag
+        if: steps.data.outputs.changed == 'true'
+        run: |
+          # data/new.json = วันที่สินค้าแต่ละตัวขึ้นเว็บครั้งแรก (หน้าเว็บโชว์ป้าย NEW 14 วัน)
+          # อ่านของเดิมจากเว็บ · ถ้ายังไม่เคยมี (404) ใช้ tools/new-seed.json · ถ้าโหลดไม่ได้ด้วยเหตุอื่น หยุดไม่ขึ้นเว็บ (กันวันที่หาย)
+          code=$(curl -sS --max-time 30 -o /tmp/new_prev.json -w '%{http_code}' "$SITE_URL/data/new.json?t=$(date +%s)" || echo 000)
+          if [ "$code" = "404" ]; then cp tools/new-seed.json /tmp/new_prev.json
+          elif [ "$code" != "200" ]; then echo "::error::โหลด data/new.json ไม่ได้ ($code)"; exit 1; fi
+          [ -f _site/data/catalog.json ] || { cp /tmp/new_prev.json _site/data/new.json; exit 0; }
+          python3 - <<'PY'
+          import json, re, datetime
+          norm = lambda s: re.sub(r'\s+', ' ', str(s or '').strip().lower())
+          prev = json.load(open('/tmp/new_prev.json')).get('products', {})
+          cat = json.load(open('_site/data/catalog.json'))
+          today = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime('%Y-%m-%d')
+          added = 0
+          for p in cat.get('products', []):
+              k = norm(p.get('brand')) + '|' + norm(p.get('name'))
+              if k not in prev: prev[k] = today; added += 1
+          json.dump({'products': prev}, open('_site/data/new.json', 'w'), ensure_ascii=False)
+          print('new products today:', added)
+          PY
       - uses: actions/upload-pages-artifact@v3
         if: steps.data.outputs.changed == 'true'
         with:
