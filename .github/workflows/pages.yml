@@ -76,15 +76,21 @@ jobs:
           python3 - <<'PY'
           import json, re, datetime
           norm = lambda s: re.sub(r'\s+', ' ', str(s or '').strip().lower())
-          prev = json.load(open('/tmp/new_prev.json')).get('products', {})
+          # ฐาน = tools/new-seed.json · ทับด้วยของบนเว็บ · สินค้า/สีที่ยังไม่มี = วันนี้ · ทับด้วย tools/new-manual.json (ตั้งเอง)
+          prev = json.load(open('tools/new-seed.json')).get('products', {})
+          prev.update(json.load(open('/tmp/new_prev.json')).get('products', {}))
           cat = json.load(open('_site/data/catalog.json'))
-          today = (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime('%Y-%m-%d')
+          today = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)).strftime('%Y-%m-%d')
           added = 0
           for p in cat.get('products', []):
               k = norm(p.get('brand')) + '|' + norm(p.get('name'))
-              if k not in prev: prev[k] = today; added += 1
+              keys = [k] + [k + '|' + norm(v.get('color')) for v in p.get('variants', []) if str(v.get('color') or '').strip()]
+              for kk in keys:
+                  if kk not in prev: prev[kk] = today; added += 1
+          try: prev.update(json.load(open('tools/new-manual.json')).get('products', {}))
+          except FileNotFoundError: pass
           json.dump({'products': prev}, open('_site/data/new.json', 'w'), ensure_ascii=False)
-          print('new products today:', added)
+          print('new products/colours today:', added)
           PY
       - uses: actions/upload-pages-artifact@v3
         if: steps.data.outputs.changed == 'true'
