@@ -1,5 +1,5 @@
 /**
- * Mera — หน้าแอดมิน (แบนเนอร์หน้าแรก + ข้อความบนหน้า Catalog + รูปสินค้า/โลโก้แบรนด์)
+ * Mera — หน้าแอดมิน (แบนเนอร์หน้าแรก + ข้อความบนหน้า Catalog + รูปสินค้า/โลโก้แบรนด์ + ป้าย NEW)
  * ------------------------------------------------------------
  * วางเป็นไฟล์ใหม่ในโปรเจกต์ Apps Script "Inventory + GB" (โปรเจกต์เดียวกับ Web_Order.gs)
  * แก้ไฟล์เดิมแค่ 1 บรรทัด: ในฟังก์ชัน webRoute_(b) ของ Web_Order.gs ใส่บรรทัดนี้เป็นบรรทัดแรก
@@ -13,6 +13,8 @@
  *  - adminBanners / adminBannerSave / adminBannerDelete / adminUpload  จัดการแบนเนอร์และอัปโหลดรูป
  *  - adminTexts / adminTextSave  แก้ข้อความบนหน้า Catalog (ไทย / อังกฤษ) · ช่องว่าง = ใช้ข้อความเดิมของเว็บ
  *  - adminImages / adminImageSave  รูปสินค้าและโลโก้แบรนด์ที่แอดมินอัปโหลด (แท็บ Images) · ใช้แทนรูปจากชีตสินค้า/ฟอร์ม
+ *  - adminNewSave  ตั้งป้าย NEW เอง ต่อสินค้า/ต่อสี (แท็บ New Tags) · auto = ลบแถว ใช้วันที่อัตโนมัติจากหน้าเว็บ (data/new.json)
+ *      ส่งไปหน้า Catalog พร้อม content เป็น newTags: { 'แบรนด์|ชื่อสินค้า[|สี]': { mode: 'on', date } | { mode: 'off' } }
  *      ส่งไปหน้า Catalog พร้อม content เป็น images: { products: {'แบรนด์|ชื่อสินค้า': [url…]}, colors: {'แบรนด์|ชื่อสินค้า': {'สี': [url…]}}, brands: {'แบรนด์': url} }
  *  - ข้อมูลสินค้า (ตารางไซซ์ / รายละเอียด) ส่งไปพร้อม content อ่านจาก 2 ที่:
  *      1) แท็บ "Product Details" ในชีต Mera Admin (ทีมกรอก/แก้เองได้ ช่องไหนกรอก ใช้ช่องนั้นก่อน)
@@ -37,6 +39,8 @@ const ADM = {
   IMG_TAB: 'Images',
   IMG_HEADS: ['Kind', 'Key', 'Image URLs', 'Updated At', 'Updated By'],
   IMG_MAX: 15,
+  NEW_TAB: 'New Tags',
+  NEW_HEADS: ['Key', 'Mode', 'Date', 'Updated At', 'Updated By'],
   HIDE_BRANDS: ['manitui'],
   HEADS: ['ID', 'Slot', 'Title', 'Image URL', 'Link', 'Start', 'End', 'Active', 'Order', 'Updated At', 'Updated By'],
   SLOTS: ['top', 'mid'],
@@ -58,7 +62,8 @@ function webAdminRoute_(b) {
     case 'adminUpload': return admUpload_(b);
     case 'adminTexts': admRequire_(b); return { ok: true, texts: admReadTexts_() };
     case 'adminTextSave': return admSaveTexts_(b);
-    case 'adminImages': admRequire_(b); return { ok: true, images: admReadImages_(), sheetUrl: admSheet_().getUrl() };
+    case 'adminImages': admRequire_(b); return { ok: true, images: admReadImages_(), newTags: admReadNew_(), sheetUrl: admSheet_().getUrl() };
+    case 'adminNewSave': return admSaveNew_(b);
     case 'adminImageSave': return admSaveImage_(b);
     default: return null;
   }
@@ -126,6 +131,7 @@ function admSheet_() {
   admEnsureTab_(ss, ADM.TEXT_TAB, ADM.TEXT_HEADS);
   admEnsureTab_(ss, ADM.INFO_TAB, ADM.INFO_HEADS);
   admEnsureTab_(ss, ADM.IMG_TAB, ADM.IMG_HEADS);
+  admEnsureTab_(ss, ADM.NEW_TAB, ADM.NEW_HEADS);
   admSheet_.cache = ss;
   return ss;
 }
@@ -180,15 +186,16 @@ function admPublicContent_() {
   const cache = CacheService.getScriptCache(), hit = cache.get(ADM.PUB_CACHE);
   if (hit) return JSON.parse(hit);
   const today = Utilities.formatDate(new Date(), ADM.TZ, 'yyyy-MM-dd');
-  let list = [], texts = {}, products = {}, images = { products: {}, brands: {} };
+  let list = [], texts = {}, products = {}, images = { products: {}, brands: {} }, newTags = {};
   try { products = admProductInfo_(); } catch (e) { console.error('product info', e); }
   if (webProp_('ADMIN_SHEET_ID', '')) {
     list = admReadAll_().filter(x => x.active && x.img && ADM.SLOTS.indexOf(x.slot) >= 0 && (!x.start || x.start <= today) && (!x.end || x.end >= today))
       .map(x => ({ id: x.id, slot: x.slot, title: x.title, img: x.img, link: x.link, start: x.start, end: x.end, order: x.order }));
     texts = admReadTexts_();
     try { images = admReadImages_(); } catch (e) { console.error('images', e); }
+    try { newTags = admReadNew_(); } catch (e) { console.error('new tags', e); }
   }
-  const out = { ok: true, banners: list, texts: texts, products: products, images: images };
+  const out = { ok: true, banners: list, texts: texts, products: products, images: images, newTags: newTags };
   try { cache.put(ADM.PUB_CACHE, JSON.stringify(out), 300); } catch (e) {}
   return out;
 }
@@ -298,6 +305,38 @@ function admSaveImage_(b) {
   });
   CacheService.getScriptCache().remove(ADM.PUB_CACHE);
   return { ok: true, images: admReadImages_() };
+}
+
+/* ---------- ป้าย NEW ที่แอดมินตั้งเอง (แท็บ New Tags) ----------
+ * Key = แบรนด์|ชื่อสินค้า หรือ แบรนด์|ชื่อสินค้า|สี (ตัวพิมพ์เล็ก) · Mode = on (แสดง 14 วันนับจาก Date) / off (ไม่แสดง) */
+function admNewTab_() { return admSheet_().getSheetByName(ADM.NEW_TAB); }
+function admNewKey_(k) { return String(k || '').split('|').map(admNorm_).join('|'); }
+function admReadNew_() {
+  const out = {}, sh = admNewTab_(), n = sh.getLastRow() - 1;
+  if (n < 1) return out;
+  sh.getRange(2, 1, n, 3).getValues().forEach(r => {
+    const k = admNewKey_(r[0]), mode = String(r[1] || '').trim().toLowerCase();
+    if (!k) return;
+    if (mode === 'off') out[k] = { mode: 'off' };
+    else if (mode === 'on') { const d = admDate_(r[2]); if (d) out[k] = { mode: 'on', date: d }; }
+  });
+  return out;
+}
+function admSaveNew_(b) {
+  const who = admRequire_(b), k = admNewKey_(String(b.key || '').slice(0, 300)), mode = String(b.mode || '');
+  if (k.split('|').length < 2 || k.split('|').some(x => !x)) throw webErr_('BAD_NEW', 'ไม่พบสินค้า');
+  if (['auto', 'on', 'off'].indexOf(mode) < 0) throw webErr_('BAD_NEW', 'ค่าป้าย NEW ไม่ถูกต้อง');
+  const today = Utilities.formatDate(new Date(), ADM.TZ, 'yyyy-MM-dd');
+  webWithLock_(() => {
+    const sh = admNewTab_(), n = sh.getLastRow() - 1;
+    const keys = n > 0 ? sh.getRange(2, 1, n, 1).getValues().map(r => admNewKey_(r[0])) : [];
+    const at = keys.indexOf(k) + 2;
+    if (mode === 'auto') { if (at > 1) sh.deleteRow(at); return; }
+    const row = [k, mode, mode === 'on' ? today : '', new Date(), who.by];
+    if (at > 1) sh.getRange(at, 1, 1, row.length).setValues([row]); else sh.appendRow(row);
+  });
+  CacheService.getScriptCache().remove(ADM.PUB_CACHE);
+  return { ok: true, newTags: admReadNew_() };
 }
 
 /* ---------- ข้อความบนหน้าเว็บ (Key = ข้อความภาษาไทยเดิมของเว็บ) ---------- */
