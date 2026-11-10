@@ -92,6 +92,39 @@ jobs:
           json.dump({'products': prev}, open('_site/data/new.json', 'w'), ensure_ascii=False)
           print('new products/colours today:', added)
           PY
+      - name: Mirror Google Drive images onto the site
+        if: steps.data.outputs.changed == 'true'
+        run: |
+          # ก๊อปรูปจาก Google Drive (lh3) มาไว้ที่ gimg/ ของเว็บเรา · หน้าเว็บโหลดจากเว็บเราแทน Drive
+          # (บางเครื่อง เช่น เบราว์เซอร์ในแอป IG โหลดรูปจาก Drive ไม่ขึ้น) · รูปไหนก๊อปไม่ได้ หน้าเว็บใช้ลิงก์ Drive เหมือนเดิม
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          from concurrent.futures import ThreadPoolExecutor
+          txt = ''
+          for f in ('_site/data/catalog.json', '_site/data/content.json'):
+              if os.path.exists(f): txt += open(f, encoding='utf-8').read()
+          ids = sorted(set(re.findall(r'https://lh3\.googleusercontent\.com/d/([A-Za-z0-9_-]{10,})', txt)))
+          os.makedirs('_site/gimg', exist_ok=True)
+          EXT = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif'}
+          def get(id_, w):
+              req = urllib.request.Request('https://lh3.googleusercontent.com/d/%s=w%d' % (id_, w), headers={'User-Agent': 'Mozilla/5.0 (Mera catalog image mirror)'})
+              with urllib.request.urlopen(req, timeout=40) as r:
+                  ct = (r.headers.get('Content-Type') or '').split(';')[0].strip()
+                  if r.status != 200 or ct not in EXT: raise ValueError(ct)
+                  return EXT[ct], r.read()
+          def one(id_):
+              try:
+                  ext, s = get(id_, 400); _, l = get(id_, 1200)
+                  open('_site/gimg/%s-s.%s' % (id_, ext), 'wb').write(s)
+                  open('_site/gimg/%s-l.%s' % (id_, ext), 'wb').write(l)
+                  return id_, ext
+              except Exception as e:
+                  print('skip', id_, e); return id_, None
+          with ThreadPoolExecutor(6) as ex: res = list(ex.map(one, ids))
+          ok = {i: e for i, e in res if e}
+          json.dump({'ids': ok}, open('_site/data/gimg.json', 'w'))
+          print('mirrored %d / %d images' % (len(ok), len(ids)))
+          PY
       - uses: actions/upload-pages-artifact@v3
         if: steps.data.outputs.changed == 'true'
         with:
