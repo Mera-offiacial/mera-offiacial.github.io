@@ -1,7 +1,7 @@
 # ที่มาของคนเข้าเว็บ → KPI Tracker (21 พ.ย. 2026)
 - ไฟล์ใหม่ `assets/track.5a01a9fa.js`: จำที่มา (utm / เว็บที่ส่งต่อ / แอป IG-FB-TikTok-LINE / direct) ครั้งแรกและล่าสุด แล้วส่ง visit / view / login / order ไป Apps Script "Mera Traffic" (`tools/apps-script/Traffic.gs`) → แท็บ Traffic + Traffic Visitors ใน KPI Tracker
 - `assets/app.29f7b090.js` = app.64da4c68.js + 2 บรรทัด (MeraTrack.view ใน trackView, MeraTrack.login หลังได้ idToken) · checkout.js ไม่แก้ (ใช้ event `mera:order` เดิม)
-- `index.html` และ `staging/index.html`: เพิ่ม `window.MERA_TRACK = { api: "" }` + track.js ก่อน checkout.js · ใส่ลิงก์ /exec ของ Mera Traffic ที่ `api` · ว่าง = ไม่ส่ง
+- `index.html` และ `staging/index.html`: เพิ่ม `window.MERA_TRACK = { api: "" }` + track.js ก่อน checkout.js · api = ลิงก์ /exec ของ Mera Traffic (บัญชี mera.officialteam) · ว่าง = ไม่ส่ง
 - ย้อนกลับ: เปลี่ยน app.29f7b090.js → app.64da4c68.js และลบ 2 บรรทัด MERA_TRACK / track.js
 - ลิงก์: `https://meraofficial.co/?utm_source=instagram&utm_medium=social&utm_campaign=zensation` (ใส่ `&code=XXX` ต่อได้)
 
