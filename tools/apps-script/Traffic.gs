@@ -84,7 +84,8 @@ function trafficHandle_(body) {
         x.vid, x.sid, lineId, mid, x.product || x.deal || '', x.brand, x.order, x.e === 'order' ? x.total : '', x.items,
         x.code || x.coupon || '', x.page, x.land, x.ref, x.dev, x.lang];
     });
-    sh.getRange(trLastRow_(sh) + 1, 1, rows.length, TR_COLS.length).setValues(rows);
+    var at = trLastRow_(sh) + 1; trRoom_(sh, at + rows.length);
+    sh.getRange(at, 1, rows.length, TR_COLS.length).setValues(rows);
 
     var linked = trUpsertVisitors_(vs, evs, lineId, members);
     if (linked.length) trBackfill_(sh, linked, lineId, members[lineId] || '');
@@ -176,6 +177,7 @@ function trUpsertVisitors_(vs, evs, lineId, members) {
     touched[i] = 1;
   });
   // เขียนเฉพาะแถวที่เปลี่ยน (แถวใหม่ต่อท้าย)
+  trRoom_(vs, TR.HEADER_ROW + data.length);
   Object.keys(touched).map(Number).sort(function (a, b) { return a - b; }).forEach(function (i) {
     vs.getRange(TR.HEADER_ROW + 1 + i, 1, 1, TV_COLS.length).setValues([data[i]]);
   });
@@ -200,6 +202,12 @@ function trRecentOrders_(sh) {
   if (last < from) return seen;
   sh.getRange(from, 16, last - from + 1, 1).getValues().forEach(function (r) { if (r[0]) seen[String(r[0])] = 1; });
   return seen;
+}
+
+/** แท็บมีแถวไม่พอ → เพิ่มทีละ 1000 */
+function trRoom_(sh, needRow) {
+  var max = sh.getMaxRows();
+  if (needRow > max) sh.insertRowsAfter(max, needRow - max + 1000);
 }
 
 /** แถวสุดท้ายที่มีข้อมูลจริง (ดูคอลัมน์ A) */
