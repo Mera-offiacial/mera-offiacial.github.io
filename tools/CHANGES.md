@@ -4,6 +4,7 @@
 - `index.html` และ `staging/index.html`: เพิ่ม `window.MERA_TRACK = { api: "" }` + track.js ก่อน checkout.js · api = ลิงก์ /exec ของ Mera Traffic (บัญชี mera.officialteam) · ว่าง = ไม่ส่ง
 - ย้อนกลับ: เปลี่ยน app.29f7b090.js → app.64da4c68.js และลบ 2 บรรทัด MERA_TRACK / track.js
 - ลิงก์: `https://meraofficial.co/?utm_source=instagram&utm_medium=social&utm_campaign=zensation` (ใส่ `&code=XXX` ต่อได้)
+- `oa.html` (ใหม่): ลิงก์ให้คนกดแอดเพื่อน LINE OA แบบนับที่มาได้ → บันทึก visit + view (Product / Deal = "Add LINE OA") แล้วพาไป `line.me/R/ti/p/@652glcdn` · เช่น `https://meraofficial.co/oa.html?utm_source=instagram&utm_medium=social&utm_campaign=zensation`
 
 # แก้โค้ด meraofficial.co: เร็วขึ้น + ถามข้อมูลสมาชิกครั้งเดียว
 > **อัปเดต:** ไม่ต้องติดตั้ง `publish-snapshot.gs` แล้ว GitHub Actions (`.github/workflows/pages.yml`) ดึงข้อมูลจาก Apps Script มาเก็บเป็น `data/catalog.json` และ `data/content.json` ทุก 10 นาทีเอง ไม่ต้องใช้ token และไม่ต้องแก้ Apps Script
