@@ -2,7 +2,7 @@
  * ทำให้ติดตั้งเป็นแอปได้ และเปิดเร็วขึ้น
  * - หน้าเว็บ: ดึงใหม่จากเน็ตทุกครั้ง (ใช้ของในเครื่องเฉพาะตอนไม่มีเน็ต)
  * - data/*.json (สินค้า ราคา สต็อก แบนเนอร์): ดึงใหม่ทุกครั้ง ใช้ของเดิมเฉพาะตอนไม่มีเน็ต
- * - assets/, img/, icons/: ชื่อไฟล์ตามเนื้อหา เก็บในเครื่องได้
+ * - assets/, img/, icons/, gimg/ (รูปจาก Drive ที่ก๊อปมา · ชื่อไฟล์ = ID ไฟล์ Drive): เก็บในเครื่องได้
  * - LINE / Apps Script / รูปจาก Google: ไม่แตะเลย
  */
 const VERSION = 'mera-v1';
@@ -62,7 +62,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(networkFirst(req, PAGES, url.pathname));
     return;
   }
-  if (/^\/(assets|img|icons)\//.test(url.pathname)) {
+  if (/^\/(assets|img|icons|gimg)\//.test(url.pathname)) {
     e.respondWith(cacheFirst(req));
   }
 });
