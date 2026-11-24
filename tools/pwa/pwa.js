@@ -172,17 +172,43 @@
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 
   // ---------- บัตรผ่านของแอป (เก็บในเครื่อง) ----------
+  // วันหมดอายุจากระบบอาจมาเป็นมิลลิวินาที / วินาที / ข้อความวันที่ → แปลงเป็นมิลลิวินาทีเสมอ · อ่านไม่ออก = ถือว่ายังใช้ได้ (ให้ระบบหลังบ้านตัดสิน)
+  function expMs(v) {
+    if (v == null || v === '') return Infinity;
+    var n = Number(v);
+    if (!isFinite(n)) { n = Date.parse(v); return isFinite(n) ? n : Infinity; }
+    if (n <= 0) return Infinity;
+    return n < 1e12 ? n * 1000 : n;
+  }
+  // บันทึกว่าบัตรผ่านถูกลบเพราะอะไร (ดูได้ที่ /?meradebug=1) · เก็บ 15 รายการล่าสุด
+  var LOG_KEY = 'mera-app-log';
+  function log(msg) {
+    try {
+      var a = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+      a.push(new Date().toISOString().slice(5, 19).replace('T', ' ') + ' ' + msg);
+      localStorage.setItem(LOG_KEY, JSON.stringify(a.slice(-15)));
+    } catch (e) {}
+  }
   function readSession() {
     try {
       var s = JSON.parse(localStorage.getItem(SES_KEY) || 'null');
-      if (s && s.token && Number(s.exp) > Date.now() + 60000) return s;
-      if (s) localStorage.removeItem(SES_KEY);
+      if (s && s.token && expMs(s.exp) > Date.now() + 60000) return s;
+      if (s) { log('expired exp=' + s.exp); localStorage.removeItem(SES_KEY); }
     } catch (e) {}
     return null;
   }
-  function writeSession(s) { try { localStorage.setItem(SES_KEY, JSON.stringify(s)); } catch (e) {} }
-  function clearSession() { try { localStorage.removeItem(SES_KEY); } catch (e) {} }
+  function writeSession(s) { try { localStorage.setItem(SES_KEY, JSON.stringify(s)); log('saved exp=' + s.exp); } catch (e) { log('save failed ' + e); } }
+  function clearSession(why) { log('cleared: ' + (why || '?')); try { localStorage.removeItem(SES_KEY); } catch (e) {} }
   var session = standalone ? readSession() : null;
+  if (standalone) log('open ' + (session ? 'with session' : 'no session'));
+
+  // หน้าตรวจสอบ: เปิด meraofficial.co/?meradebug=1 ในแอป → เห็นสถานะบัตรผ่าน + ประวัติ (ไม่โชว์ตัวบัตรผ่าน)
+  if (qs.get('meradebug')) whenReady(function () {
+    var raw = null, logs = []; try { raw = JSON.parse(localStorage.getItem(SES_KEY) || 'null'); logs = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) {}
+    var info = 'mode: ' + (standalone ? 'app' : 'browser') + '\nsession: ' + (raw ? 'yes, exp=' + raw.exp + ' → ' + new Date(expMs(raw.exp)).toISOString() : 'none') + '\n\n' + logs.join('\n');
+    showSheet('<h2>Mera debug</h2><pre style="white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;margin:0;max-height:50vh;overflow:auto">' + esc(info) + '</pre>' +
+      '<button class="no" data-a="x" type="button">' + T('ปิด', 'Close') + '</button>', function (e, a) { if (a || e.target === sheet) closeSheet(); });
+  });
 
   // --- 1) ขากลับ: เปิดใน LINE พร้อมสินค้าที่เลือก (?mc=...) → ให้ระบบสั่งซื้อทำต่อเอง
   //     (ต้องรันก่อน checkout.js จึงโหลดไฟล์นี้แบบไม่ defer)
@@ -327,13 +353,13 @@
       if (session && !(orig.isLoggedIn && orig.isLoggedIn.apply(l))) return Promise.reject(new Error('app session'));
       return orig.getFriendship ? orig.getFriendship.apply(l, arguments) : Promise.reject(new Error('no friendship'));
     };
-    l.logout = function () { session = null; clearSession(); try { return orig.logout && orig.logout.apply(l, arguments); } catch (e) {} };
+    l.logout = function () { if (session) clearSession('logout'); session = null; try { return orig.logout && orig.logout.apply(l, arguments); } catch (e) {} };
     // liff.login() ในโหมดแอป → หน้าต่าง "เชื่อม LINE" แทนการออกไปหน้าล็อกอิน
     l.login = function () {
       try { var r = JSON.parse(sessionStorage.getItem('mc_resume') || 'null'); sessionStorage.removeItem('mc_resume');
         if (r && (r.items && r.items.length || r.deal)) intent = { kind: r.deal ? 'deal' : 'checkout', items: r.items, cart: r.cart, deal: r.deal };
       } catch (e) {}
-      if (session) { session = null; clearSession(); }   // ระบบขอให้ล็อกอินใหม่ = บัตรผ่านใช้ไม่ได้แล้ว
+      if (session) { session = null; clearSession('login asked'); }   // ระบบขอให้ล็อกอินใหม่ = บัตรผ่านใช้ไม่ได้แล้ว
       openPair();
     };
     l.__meraApp = true;
@@ -367,7 +393,10 @@
         if (session && body.indexOf(session.token) >= 0) {
           p.then(function (res) {
             res.clone().json().then(function (j) {
-              if (j && j.ok === false && (j.code === 'AUTH' || j.error === 'login_expired')) { session = null; clearSession(); }
+              if (session && j && j.ok === false && (j.code === 'AUTH' || j.error === 'login_expired')) {
+                var act = ''; try { act = JSON.parse(body).action || ''; } catch (er) {}
+                session = null; clearSession('AUTH from ' + act + ': ' + (j.error || ''));
+              }
             }).catch(function () {});
           }).catch(function () {});
         }
