@@ -395,7 +395,10 @@
             res.clone().json().then(function (j) {
               if (session && j && j.ok === false && (j.code === 'AUTH' || j.error === 'login_expired')) {
                 var act = ''; try { act = JSON.parse(body).action || ''; } catch (er) {}
-                session = null; clearSession('AUTH from ' + act + ': ' + (j.error || ''));
+                // ลบบัตรผ่านเฉพาะเมื่อคำสั่งหลัก (โปรไฟล์/ออเดอร์) ปฏิเสธ · คำสั่งเสริม (คูปอง แอดมิน ฯลฯ) แค่จดไว้ ไม่ทำให้หลุด
+                if (/^(me|myOrders|order|createOrder|createCartOrder|memberGet|memberSave|profile|register)$/.test(act)) {
+                  session = null; clearSession('AUTH from ' + act + ': ' + (j.error || ''));
+                } else log('AUTH (kept) from ' + act + ': ' + (j.error || ''));
               }
             }).catch(function () {});
           }).catch(function () {});
@@ -456,6 +459,12 @@
     return o;
   }
 
+  // เคยเชื่อมแล้วแต่หน้านี้ยังขึ้น → โชว์ประวัติสั้นๆ ตัวเล็กใต้ปุ่ม (แคปหน้าจอส่งทีมได้เลย ไม่มีข้อมูลลับ)
+  function diagLine() {
+    var a = []; try { a = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) {}
+    if (!a.some(function (x) { return / saved | cleared| expired /.test(x); })) return '';
+    return '<p style="margin:14px 0 0;font:10px/1.35 ui-monospace,monospace;color:#9a8a8f;text-align:left;white-space:pre-wrap;word-break:break-all">' + esc(a.slice(-6).join('\n')) + '</p>';
+  }
   function openPair() {
     var p = readPair();
     if (!p) { p = { code: randomCode(), at: Date.now(), intent: slimIntent(intent) }; savePair(p); }
@@ -468,7 +477,7 @@
         ? '<div class="spin" aria-hidden="true"></div><p>' + T('กด "เชื่อมเลย" ในแอป LINE<br>แล้วกลับมาที่แอปนี้ ระบบจะไปต่อให้เอง', 'Tap "Connect" in LINE,<br>then come back here — we will continue automatically.') + '</p>'
         : '<p>' + T('ยืนยันในแอป LINE 1 ครั้ง แล้วกลับมาที่แอปนี้<br>ครั้งต่อไปสั่งซื้อและดูออเดอร์ได้เลย ไม่ต้องเชื่อมอีก', 'Confirm once in the LINE app, then come back here.<br>After that you can order and see your orders without signing in again.') + '</p>') +
       '<a class="go" data-a="go" href="' + link + '">' + LINE_SVG + (waiting ? T('เปิด LINE อีกครั้ง', 'Open LINE again') : T('เชื่อม LINE', 'Connect LINE')) + '</a>' +
-      '<button class="no" data-a="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button>',
+      '<button class="no" data-a="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button>' + diagLine(),
       function (e, a) {
         var act = a && a.getAttribute('data-a');
         if (act === 'no' || e.target === sheet) {
