@@ -1,0 +1,20 @@
+{
+  "id": "/brand.html",
+  "name": "Mera Seller",
+  "short_name": "Mera Seller",
+  "description": "Mera Seller – จัดการออเดอร์ การจัดส่ง และยอดเงินของแบรนด์บน Mera",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "/brand.html",
+  "scope": "/brand.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFBED",
+  "theme_color": "#FFFBED",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/seller-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/seller-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/seller-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

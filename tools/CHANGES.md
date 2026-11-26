@@ -1,3 +1,12 @@
+# แอป Mera Seller บนหน้าจอมือถือ (26 พ.ย. 2026)
+- `brand.html` เปลี่ยนชื่อเป็น **Mera Seller** + ติดตั้งลงหน้าจอโฮมได้ (ไอคอน `icons/seller-*.png` สร้างจาก `tools/pwa/seller_icon.py`)
+- Android/คอม: ใช้ `seller.webmanifest` (scope = /brand.html แยกจากแอป Mera ของลูกค้า) · iPhone: ไม่ใส่ manifest → ไอคอนเปิดที่ลิงก์ตอนกดเพิ่ม (มีรหัสแบรนด์) เพราะ iPhone แยกข้อมูลแอปกับ Safari
+- เปิดในเบราว์เซอร์: รหัสแบรนด์ (`#k=`) อยู่ในลิงก์เสมอ (เดิมลบออก) เพื่อให้ไอคอนพารหัสไปด้วย · โหมดแอป: ลบออกจากแถบที่อยู่
+- เปิดจากไอคอนแล้วไม่มีรหัส / รหัสถูกยกเลิก → ช่อง "วางลิงก์ Mera Seller จากกลุ่ม LINE" (วางทั้งข้อความก็ได้)
+- การ์ด "ติดตั้งแอป Mera Seller" ใต้แท็บ เฉพาะมือถือที่ยังไม่ติดตั้ง · ปิดแล้วไม่ขึ้น 14 วัน · ในแอป LINE มีปุ่มเปิด Safari/Chrome (`?openExternalBrowser=1`)
+- ลงทะเบียน `/sw.js` ตัวเดิม (ไม่แก้ sw.js)
+- ทดสอบ 23 กรณี (iPhone Safari, โหมดแอป, วางลิงก์, รหัสถูกยกเลิก, Android, LINE, คอม)
+
 # ที่มาของคนเข้าเว็บ → KPI Tracker (21 พ.ย. 2026)
 - ไฟล์ใหม่ `assets/track.5a01a9fa.js`: จำที่มา (utm / เว็บที่ส่งต่อ / แอป IG-FB-TikTok-LINE / direct) ครั้งแรกและล่าสุด แล้วส่ง visit / view / login / order ไป Apps Script "Mera Traffic" (`tools/apps-script/Traffic.gs`) → แท็บ Traffic + Traffic Visitors ใน KPI Tracker
 - `assets/app.29f7b090.js` = app.64da4c68.js + 2 บรรทัด (MeraTrack.view ใน trackView, MeraTrack.login หลังได้ idToken) · checkout.js ไม่แก้ (ใช้ event `mera:order` เดิม)
