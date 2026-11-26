@@ -387,10 +387,23 @@
   (function watchFetch() {
     var f = window.fetch; if (!f) return;
     window.fetch = function (input, init) {
+      // ระบบสินค้า (Apps Script คนละตัวกับระบบสั่งซื้อ) ไม่รู้จักบัตรผ่านของแอป → ตอบ login_expired แล้วหน้าเว็บสั่งออกจากระบบ
+      // ใช้บัตรผ่านอยู่: คำสั่ง 'me' ไปที่ระบบสินค้า ตอบแทนว่า "ไม่มีข้อมูลสมาชิกในแคช" (ข้อมูลสมาชิกจริงดึงจากระบบสั่งซื้ออยู่แล้ว)
+      try {
+        var url0 = typeof input === 'string' ? input : (input && input.url) || '';
+        var body0 = init && typeof init.body === 'string' ? init.body : '';
+        var ck = String((window.MERA_CHECKOUT && window.MERA_CHECKOUT.api) || '');
+        if (session && body0.indexOf(session.token) >= 0 && /script\.google\.com/.test(url0) && (!ck || url0.indexOf(ck) !== 0)) {
+          var act0 = ''; try { act0 = JSON.parse(body0).action || ''; } catch (er) {}
+          if (act0 === 'me') return Promise.resolve(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+      } catch (e) {}
       var p = f.apply(this, arguments);
       try {
         var body = init && typeof init.body === 'string' ? init.body : '';
-        if (session && body.indexOf(session.token) >= 0) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var ckApi = String((window.MERA_CHECKOUT && window.MERA_CHECKOUT.api) || '');
+        if (session && body.indexOf(session.token) >= 0 && ckApi && url.indexOf(ckApi) === 0) {   // ตัดสินจากระบบสั่งซื้อเท่านั้น
           p.then(function (res) {
             res.clone().json().then(function (j) {
               if (session && j && j.ok === false && (j.code === 'AUTH' || j.error === 'login_expired')) {
