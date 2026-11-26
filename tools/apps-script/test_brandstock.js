@@ -110,9 +110,9 @@ const cell = (w, sku, col) => { const PD = w.sheets['Product Database']; const h
   t('restock sold out → IN STOCK', cell(w, 'MRA091', 'Inventory Status') === 'IN STOCK' && cell(w, 'MRA091', 'Remaining') === 3); }
 // 6 ลด: ไม่แจ้ง LINE, log, OUT OF STOCK
 { const w = world(); const r = w.call({ action: 'brandStock', key: NK, clientRef: 'c', changes: [{ sku: 'MRA079', delta: -21 }] });
-  t('decrease ok no push', r.ok && !r.notified && w.pushes.length === 0, r);
+  t('decrease notifies', r.ok && r.notified && w.pushes.length === 1 && /^📉 แบรนด์ลดสต็อก · Narris/.test(w.pushes[0].messages[0].text), r);
   t('decrease stock 24→3 remaining 2', cell(w, 'MRA079', 'Stock') === 3 && cell(w, 'MRA079', 'Remaining') === 2);
-  t('log no notify flag', w.sheets['Stock Log'].rows[1][12] === ''); }
+  t('log notified on decrease', w.sheets['Stock Log'].rows[1][12] === 'Sent'); }
 // 7 ลดต่ำกว่าที่จอง
 { const w = world(); const r = w.call({ action: 'brandStock', key: NK, clientRef: 'd', changes: [{ sku: 'MRA080', delta: -10 }] });
   t('below reserved rejected', !r.ok && r.code === 'BELOW_RESERVED' && /ลดได้มากสุด 9 ชิ้น/.test(r.error) && /จองไว้ 3/.test(r.error), r);
@@ -142,7 +142,7 @@ const cell = (w, sku, col) => { const PD = w.sheets['Product Database']; const h
 // 13 หลาย SKU เพิ่ม+ลด → แจ้งครั้งเดียว
 { const w = world(); const r = w.call({ action: 'brandStock', key: NK, clientRef: 'i', changes: [{ sku: 'MRA079', delta: 1 }, { sku: 'MRA091', delta: 4 }, { sku: 'MRA080', delta: -2 }] });
   t('mixed ok one push', r.ok && r.saved === 3 && w.pushes.length === 1, r);
-  t('push lists cuts', /ลดด้วย 1 รายการ/.test(w.pushes[0].messages[0].text));
+  t('mixed head + sections', /^📦 แบรนด์แก้สต็อก/.test(w.pushes[0].messages[0].text) && /เพิ่ม 2 รายการ/.test(w.pushes[0].messages[0].text) && /ลด 1 รายการ/.test(w.pushes[0].messages[0].text), w.pushes[0].messages[0].text);
   t('log 3 rows', w.sheets['Stock Log'].rows.length === 4); }
 // 14 ส่ง LINE ไม่ได้ → ยังบันทึกสต็อก, log Failed
 { const w = world({ pushFail: true }); const r = w.call({ action: 'brandStock', key: NK, clientRef: 'j', changes: [{ sku: 'MRA079', delta: 1 }] });
@@ -172,4 +172,10 @@ const LF = 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345678
   t('prefill by brand keyword', /entry\.222=Narris$/.test(w.call({ action: 'brandProducts', key: NK }).formUrl)); }
 { const w = world({ formSetting: 'https://forms.gle/custom', linkedForm: LF, form: { type: 'TEXT' } });
   t('setting wins over prefill', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://forms.gle/custom'); }
+// 18 ลดจนหมด → ป้ายเตือน
+{ const w = world(); const r = w.call({ action: 'brandStock', key: KK, clientRef: 'z', changes: [{ sku: 'MRA034', delta: -4 }] });
+  const tx = w.pushes[0] && w.pushes[0].messages[0].text;
+  t('sold-out warning', r.ok && /ลดสต็อก · Kome\.offi/.test(tx) && /4 → 0 \(-4\)  ⚠️ หมดแล้ว/.test(tx) && /หมด 1 รายการ/.test(tx) && cell(w, 'MRA034', 'Inventory Status') === 'OUT OF STOCK', tx); }
+{ const w = world(); w.call({ action: 'brandStock', key: NK, clientRef: 'y', changes: [{ sku: 'MRA079', delta: 2 }] });
+  t('add-only head', /^📦 แบรนด์เพิ่มสต็อก · Narris\n\n• Hobo Bag · สีเงิน PU \(MRA079\)/.test(w.pushes[0].messages[0].text), w.pushes[0].messages[0].text); }
 console.log(pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0);
