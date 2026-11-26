@@ -125,9 +125,9 @@ jobs:
           json.dump({'ids': ok}, open('_site/data/gimg.json', 'w'))
           print('mirrored %d / %d images' % (len(ok), len(ids)))
           PY
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: steps.data.outputs.changed == 'true'
         with:
           path: _site
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         if: steps.data.outputs.changed == 'true'
