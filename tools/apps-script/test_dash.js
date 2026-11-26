@@ -40,7 +40,7 @@ const pad = n => String(n).padStart(2, '0');
 const ctx = {
   console, JSON, Math, Date, Number, String, Object, Array, RegExp, isNaN,
   SpreadsheetApp: { openById: () => ss },
-  Utilities: { formatDate: (d, tz, f) => { const t = new Date(d.getTime() + 7 * 3600e3); return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1) + '-' + pad(t.getUTCDate()); } },
+  Utilities: { sleep() {}, formatDate: (d, tz, f) => { const t = new Date(d.getTime() + 7 * 3600e3); return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1) + '-' + pad(t.getUTCDate()); } },
   CacheService: { getScriptCache: () => ({ get: () => null, put() {} }) },
   webSS_: () => ({ getSheetByName: n => inv[n] || null }),
   webErr_: (c, m) => { const e = new Error(m); e.code = c; return e; },

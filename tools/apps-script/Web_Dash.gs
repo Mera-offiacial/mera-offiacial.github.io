@@ -231,7 +231,9 @@ function dashOaSync() {
       headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
     });
     got++;
+    if (r.getResponseCode() === 429) { console.warn('LINE จำกัดจำนวนครั้ง หยุดไว้ก่อน ดึงต่อรอบหน้า (' + d + ')'); break; }
     if (r.getResponseCode() !== 200) { console.warn('OA ' + d + ' ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 200)); continue; }
+    Utilities.sleep(400);                                 // กัน LINE จำกัดจำนวนครั้ง
     var j = JSON.parse(r.getContentText());
     if (j.status !== 'ready' || j.followers == null) continue;   // ยังไม่พร้อม (LINE อัปเดตช้า) → ลองใหม่รอบหน้า
     var x = { d: d, followers: Number(j.followers) || 0, blocks: Number(j.blocks) || 0 };
