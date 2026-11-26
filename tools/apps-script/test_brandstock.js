@@ -15,6 +15,20 @@ function mkSheet(name, rows, formulas) {
   sh.setFrozenRows = () => {};
   return sh;
 }
+function mkFormApp(f) {
+  const T = { TEXT: 'TEXT', PARAGRAPH_TEXT: 'PARA', LIST: 'LIST', MULTIPLE_CHOICE: 'MC', CHECKBOX: 'CB' };
+  return { ItemType: T, openByUrl: () => {
+    if (!f || f.denied) throw new Error('You do not have permission to call FormApp.openByUrl');
+    const resp = (id, v) => ({ id, v });
+    const mkItem = (id, title, type, choices) => {
+      const wrap = { createResponse: v => resp(id, v), getChoices: () => (choices || []).map(c => ({ getValue: () => c })) };
+      return { getTitle: () => title, getType: () => type, asTextItem: () => wrap, asParagraphTextItem: () => wrap, asListItem: () => wrap, asMultipleChoiceItem: () => wrap };
+    };
+    const items = [mkItem(111, 'ชื่อผู้ติดต่อ', T.TEXT), mkItem(222, f.title || 'ชื่อแบรนด์', T[f.type || 'TEXT'], f.choices)];
+    return { getTitle: () => 'ฟอร์มลงสินค้า', getItems: () => items,
+      createResponse: () => ({ withItemResponse: r => ({ toPrefilledUrl: () => 'https://docs.google.com/forms/d/e/PUB/viewform?usp=pp_url&entry.' + r.id + '=' + encodeURIComponent(r.v) }) }) };
+  } };
+}
 function world(opts = {}) {
   const PD = ['SKU', 'Brand', 'Product Name', 'Size', 'Color', 'Stock', 'Original Price', 'Sale Price', 'รวมค่าส่ง', 'ลดไปกี่ %', 'Product Status', 'Product Category', 'Sold Qauntity', 'Inventory Status', 'Remaining'];
   const sheets = {
@@ -50,6 +64,7 @@ function world(opts = {}) {
     CacheService: { getScriptCache: () => ({ get: k => cacheStore[k] || null, put: (k, v) => { cacheStore[k] = v; } }) },
     UrlFetchApp: { fetch: (u, o) => { pushes.push(JSON.parse(o.payload)); return { getResponseCode: () => opts.pushFail ? 500 : 200, getContentText: () => '' }; } },
     Utilities: { formatDate: () => '26 Nov 13:40' },
+    FormApp: mkFormApp(opts.form),
     SpreadsheetApp: { flush() {} },
     Date, JSON, Math, Number, String, Array, Object, isFinite,
   };
@@ -143,4 +158,18 @@ const cell = (w, sku, col) => { const PD = w.sheets['Product Database']; const h
 { const w = world({ formSetting: 'none', linkedForm: 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit' });
   t('form none hides button', w.call({ action: 'brandProducts', key: NK }).formUrl === ''); }
 { const w = world({ formSetting: '' }); t('no linked form → no button', w.call({ action: 'brandProducts', key: NK }).formUrl === ''); }
+// 17 เติมชื่อแบรนด์ในฟอร์ม
+const LF = 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit';
+{ const w = world({ formSetting: '', linkedForm: LF, form: { type: 'TEXT' } });
+  t('prefill text', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://docs.google.com/forms/d/e/PUB/viewform?usp=pp_url&entry.222=Narris'); }
+{ const w = world({ formSetting: '', linkedForm: LF, form: { type: 'LIST', choices: ['narris', 'Kome.offi'] } });
+  t('prefill dropdown matching choice', w.call({ action: 'brandProducts', key: NK }).formUrl.endsWith('entry.222=narris')); }
+{ const w = world({ formSetting: '', linkedForm: LF, form: { type: 'LIST', choices: ['Other'] } });
+  t('dropdown no choice → plain link', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/viewform'); }
+{ const w = world({ formSetting: '', linkedForm: LF, form: { denied: true } });
+  t('not authorized → plain link', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/viewform'); }
+{ const w = world({ formSetting: '', linkedForm: LF, form: { title: 'Brand name (ชื่อร้าน)' } });
+  t('prefill by brand keyword', /entry\.222=Narris$/.test(w.call({ action: 'brandProducts', key: NK }).formUrl)); }
+{ const w = world({ formSetting: 'https://forms.gle/custom', linkedForm: LF, form: { type: 'TEXT' } });
+  t('setting wins over prefill', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://forms.gle/custom'); }
 console.log(pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0);

@@ -23,6 +23,7 @@
  *    ช่อง Remaining ที่เป็นสูตร ปล่อยให้สูตรคำนวณเอง · ช่องที่เป็นตัวเลข ระบบเขียนให้
  *  - เพิ่มได้ไม่เกิน BST.MAX_ADD ชิ้นต่อ SKU ต่อครั้ง · ครั้งละไม่เกิน BST.MAX_CHANGES SKU
  *  - ปุ่ม "+ ลงสินค้าใหม่" ในหน้าแบรนด์ = Google Form ที่ส่งคำตอบเข้าแท็บ Product Responses (หาให้เอง)
+ *    และเติมชื่อแบรนด์ในข้อ "ชื่อแบรนด์" ให้ · ต้อง Run bstFormCheck 1 ครั้งเพื่ออนุญาต Google Forms
  *    อยากใช้ลิงก์อื่น: ใส่ Web Settings "Product Form URL" · ไม่อยากให้มีปุ่ม: ใส่ none
  *
  * ใช้ของเดิมใน Web_Order.gs: webSS_, webHeads_, webWithLock_, webErr_, webProp_
@@ -133,25 +134,64 @@ function bstView_(brand, settings) {
       held: held[v.sku] || 0, active: v.active });
   });
   return { ok: true, brand: brand, products: order.map(k => by[k]), maxAdd: BST.MAX_ADD,
-    formUrl: bstFormUrl_(settings), updatedAt: Date.now() };
+    formUrl: bstFormUrl_(settings, brand), updatedAt: Date.now() };
 }
 // ลิงก์ฟอร์มลงสินค้าใหม่: ใช้ Web Settings "Product Form URL" ถ้ากรอกไว้
-// ไม่กรอก = หาเองจากฟอร์มที่ส่งคำตอบเข้าแท็บ Product Responses (ฟอร์มเดียวกับที่แบรนด์ใช้ลงสินค้าอยู่แล้ว)
-function bstFormUrl_(settings) {
+// ไม่กรอก = หาเองจากฟอร์มที่ส่งคำตอบเข้าแท็บ Product Responses แล้วเติมชื่อแบรนด์ในข้อ "ชื่อแบรนด์" ให้
+// (เติมชื่อต้องใช้สิทธิ์ Google Forms: Run bstFormCheck ในหน้าแก้โค้ด 1 ครั้งแล้วกดอนุญาต · ยังไม่อนุญาต = ได้ลิงก์ฟอร์มเปล่า)
+function bstFormUrl_(settings, brand) {
   const set = String(settings['Product Form URL'] || '').trim();
   if (/^https:\/\//.test(set)) return set;
   if (/^(none|off|false)$/i.test(set)) return '';
-  const cache = CacheService.getScriptCache(), hit = cache.get('bst_form_url');
+  const cache = CacheService.getScriptCache(), ck = 'bst_form_' + bstNorm_(brand).replace(/[^a-z0-9ก-๙]/g, '').slice(0, 80);
+  const hit = cache.get(ck);
   if (hit !== null) return hit;
-  let url = '';
+  let url = '', prefilled = false;
   try {
     const sh = webSS_().getSheetByName('Product Responses');
     const raw = sh && sh.getFormUrl ? String(sh.getFormUrl() || '') : '';
     const m = raw.match(/\/forms\/d\/(e\/)?([A-Za-z0-9_-]{20,})/);
-    if (m) url = m[1] ? 'https://docs.google.com/forms/d/e/' + m[2] + '/viewform' : 'https://docs.google.com/forms/d/' + m[2] + '/viewform';
+    if (m) url = 'https://docs.google.com/forms/d/' + (m[1] ? 'e/' : '') + m[2] + '/viewform';
+    if (raw && brand) {
+      try { const pre = bstPrefill_(raw, brand); if (pre) { url = pre; prefilled = true; } }
+      catch (e) { console.warn('bstPrefill_ (ยังไม่ได้อนุญาต Google Forms?) ' + e); }
+    }
   } catch (e) { console.warn('bstFormUrl_ ' + e); }
-  cache.put('bst_form_url', url, 3600);
+  cache.put(ck, url, prefilled ? 21600 : 300);   // ยังเติมชื่อไม่ได้ → ลองใหม่ใน 5 นาที
   return url;
+}
+// ลิงก์ฟอร์มที่เติมชื่อแบรนด์ไว้แล้ว · ข้อ "ชื่อแบรนด์" เป็นช่องพิมพ์ หรือตัวเลือก (ต้องมีชื่อนี้ในตัวเลือก) · หาไม่เจอ = ''
+function bstPrefill_(formUrl, brand) {
+  const form = FormApp.openByUrl(formUrl), T = FormApp.ItemType;
+  const items = form.getItems(), title = it => String(it.getTitle() || '').trim();
+  const item = items.find(it => /^ชื่อแบรนด์/.test(title(it))) || items.find(it => /แบรนด์|brand/i.test(title(it)));
+  if (!item) return '';
+  const pick = choices => { const c = choices.find(x => bstNorm_(x.getValue()) === bstNorm_(brand)); return c ? c.getValue() : ''; };
+  let resp = null;
+  switch (item.getType()) {
+    case T.TEXT: resp = item.asTextItem().createResponse(brand); break;
+    case T.PARAGRAPH_TEXT: resp = item.asParagraphTextItem().createResponse(brand); break;
+    case T.LIST: { const v = pick(item.asListItem().getChoices()); if (v) resp = item.asListItem().createResponse(v); break; }
+    case T.MULTIPLE_CHOICE: { const v = pick(item.asMultipleChoiceItem().getChoices()); if (v) resp = item.asMultipleChoiceItem().createResponse(v); break; }
+    default: return '';
+  }
+  return resp ? form.createResponse().withItemResponse(resp).toPrefilledUrl() : '';
+}
+// Run ครั้งเดียวในหน้าแก้โค้ด → กดอนุญาต Google Forms · แล้วดูลิงก์ของแต่ละแบรนด์ใน log
+function bstFormCheck() {
+  const sh = webSS_().getSheetByName('Product Responses');
+  const raw = sh ? sh.getFormUrl() : '';
+  if (!raw) { console.log('แท็บ Product Responses ไม่ได้ผูกกับ Google Form'); return; }
+  const form = FormApp.openByUrl(raw);
+  console.log('ฟอร์ม: ' + form.getTitle());
+  const bm = webSS_().getSheetByName('Brand Master'), heads = webHeads_(bm), c = heads.indexOf('Brand Name');
+  bm.getRange(2, 1, bm.getLastRow() - 1, heads.length).getValues().forEach(r => {
+    const name = String(r[c] || '').trim(); if (!name) return;
+    let u = ''; try { u = bstPrefill_(raw, name); } catch (e) { u = 'ผิดพลาด: ' + e; }
+    console.log(name + ': ' + (u || 'เติมชื่อไม่ได้ (หาข้อ "ชื่อแบรนด์" ไม่เจอ หรือไม่มีชื่อนี้ในตัวเลือก) → ใช้ลิงก์ฟอร์มเปล่า'));
+  });
+  CacheService.getScriptCache().removeAll(bm.getRange(2, c + 1, bm.getLastRow() - 1, 1).getValues()
+    .map(r => 'bst_form_' + bstNorm_(r[0]).replace(/[^a-z0-9ก-๙]/g, '').slice(0, 80)));
 }
 function bstProducts_(b) {
   const who = bstBrand_(b);
