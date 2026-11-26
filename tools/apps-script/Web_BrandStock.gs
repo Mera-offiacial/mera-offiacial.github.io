@@ -13,7 +13,7 @@
  *  - brandStock {key, clientRef, changes[{sku, delta}], note}
  *       เพิ่ม/ลดสต็อก → แก้คอลัมน์ Stock (+ Remaining / Inventory Status) ใต้ LockService
  *       ลดได้ไม่ต่ำกว่าของที่ลูกค้าจองไว้ (ออเดอร์เว็บที่รอตรวจสลิป)
- *       ทุกครั้งลงแท็บ Stock Log · มีการ "เพิ่ม" → ส่ง LINE เข้ากลุ่มแอดมิน (ADMIN_GROUP_ID)
+ *       ทุกครั้งลงแท็บ Stock Log และส่ง LINE เข้ากลุ่มแอดมิน (ADMIN_GROUP_ID) ทั้งเพิ่มและลด · ลดจนหมดมีป้ายเตือน
  *
  * กติกา
  *  - แบรนด์เข้าด้วย Portal Key ใน Brand Master (Active = TRUE) · Web Settings "Brand Portal" ต้องเป็น TRUE
@@ -242,13 +242,11 @@ function bstSave_(b) {
     });
     SpreadsheetApp.flush();
 
-    const adds = plan.filter(p => p.d > 0);
-    let notified = false;
-    if (adds.length) notified = bstNotify_(who.name, plan, note);
+    const notified = bstNotify_(who.name, plan, note);   // แจ้งทีมทุกครั้งที่มีการเปลี่ยน (Palm 26 พ.ย.)
     const now = new Date(), log = bstLogSheet_();
     log.getRange(log.getLastRow() + 1, 1, plan.length, BST.LOG_HEADS.length).setValues(plan.map(p => [
       now, who.name, p.v.sku, p.v.name, p.v.color, p.v.size, p.v.stock, p.d, p.after, p.remainAfter, note, ref,
-      p.d > 0 ? (notified ? 'Sent' : 'Failed') : '']));
+      notified ? 'Sent' : 'Failed']));
     if (doneKey) cache.put(doneKey, notified ? 'n' : '1', 21600);
     return { duplicate: false, notified, changed: plan.length };
   });
@@ -278,13 +276,17 @@ function bstNotify_(brand, plan, note) {
   catch (e) { console.error('bstNotify_ ' + e); return false; }
 }
 function bstText_(brand, plan, note) {
-  const adds = plan.filter(p => p.d > 0), cuts = plan.filter(p => p.d < 0);
-  const line = p => '• ' + p.v.name + ([p.v.color, p.v.size].filter(Boolean).length ? ' · ' + [p.v.color, p.v.size].filter(Boolean).join(' / ') : '') +
-    ' (' + p.v.sku + ')\n   เหลือ ' + Math.max(0, p.v.stock - p.v.sold) + ' → ' + p.remainAfter + ' (' + (p.d > 0 ? '+' : '') + p.d + ')';
-  let t = '📦 แบรนด์เพิ่มสต็อก · ' + brand + '\n\n' + adds.map(line).join('\n');
-  if (cuts.length) t += '\n\nลดด้วย ' + cuts.length + ' รายการ:\n' + cuts.map(line).join('\n');
+  const adds = plan.filter(p => p.d > 0), cuts = plan.filter(p => p.d < 0), gone = cuts.filter(p => p.remainAfter <= 0);
+  const head = adds.length && cuts.length ? '📦 แบรนด์แก้สต็อก' : adds.length ? '📦 แบรนด์เพิ่มสต็อก' : '📉 แบรนด์ลดสต็อก';
+  const line = p => '• ' + p.v.name + ([p.v.color, p.v.size].filter(x => x && x !== '-').length ? ' · ' + [p.v.color, p.v.size].filter(x => x && x !== '-').join(' / ') : '') +
+    ' (' + p.v.sku + ')\n   เหลือ ' + Math.max(0, p.v.stock - p.v.sold) + ' → ' + p.remainAfter + ' (' + (p.d > 0 ? '+' : '') + p.d + ')' +
+    (p.d < 0 && p.remainAfter <= 0 ? '  ⚠️ หมดแล้ว' : '');
+  let t = head + ' · ' + brand;
+  if (adds.length) t += '\n\n' + (cuts.length ? 'เพิ่ม ' + adds.length + ' รายการ:\n' : '') + adds.map(line).join('\n');
+  if (cuts.length) t += '\n\n' + (adds.length ? 'ลด ' + cuts.length + ' รายการ:\n' : '') + cuts.map(line).join('\n');
+  if (gone.length) t += '\n\n⚠️ หมด ' + gone.length + ' รายการ · ลูกค้าจะเห็น "สินค้าหมด" บนหน้าเว็บ';
   if (note) t += '\n\nหมายเหตุจากแบรนด์: ' + note;
-  t += '\n\n' + Utilities.formatDate(new Date(), BST.TZ, 'd MMM HH:mm') + ' · ขึ้นหน้าเว็บภายใน 10 นาที';
+  t += '\n\n' + Utilities.formatDate(new Date(), BST.TZ, 'd MMM HH:mm') + ' · หน้าเว็บอัปเดตภายใน 10 นาที';
   t += '\nดูประวัติ: ' + webSS_().getUrl() + '#gid=' + bstLogSheet_().getSheetId();
   return t.slice(0, 4900);
 }
