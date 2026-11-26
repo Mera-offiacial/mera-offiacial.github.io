@@ -22,7 +22,8 @@
  *  - เปลี่ยนที่ Stock (จำนวนที่ลงไว้ทั้งหมด) · Sold ไม่แตะ (มาจากออเดอร์) · Remaining = Stock − Sold
  *    ช่อง Remaining ที่เป็นสูตร ปล่อยให้สูตรคำนวณเอง · ช่องที่เป็นตัวเลข ระบบเขียนให้
  *  - เพิ่มได้ไม่เกิน BST.MAX_ADD ชิ้นต่อ SKU ต่อครั้ง · ครั้งละไม่เกิน BST.MAX_CHANGES SKU
- *  - ปุ่ม "ลงสินค้าใหม่" ในหน้าแบรนด์ ใช้ลิงก์จาก Web Settings "Product Form URL" (ว่าง = ไม่แสดงปุ่ม)
+ *  - ปุ่ม "+ ลงสินค้าใหม่" ในหน้าแบรนด์ = Google Form ที่ส่งคำตอบเข้าแท็บ Product Responses (หาให้เอง)
+ *    อยากใช้ลิงก์อื่น: ใส่ Web Settings "Product Form URL" · ไม่อยากให้มีปุ่ม: ใส่ none
  *
  * ใช้ของเดิมใน Web_Order.gs: webSS_, webHeads_, webWithLock_, webErr_, webProp_
  * Script Properties เดิม: LINE_CHANNEL_ACCESS_TOKEN, ADMIN_GROUP_ID
@@ -132,7 +133,25 @@ function bstView_(brand, settings) {
       held: held[v.sku] || 0, active: v.active });
   });
   return { ok: true, brand: brand, products: order.map(k => by[k]), maxAdd: BST.MAX_ADD,
-    formUrl: String(settings['Product Form URL'] || '').trim(), updatedAt: Date.now() };
+    formUrl: bstFormUrl_(settings), updatedAt: Date.now() };
+}
+// ลิงก์ฟอร์มลงสินค้าใหม่: ใช้ Web Settings "Product Form URL" ถ้ากรอกไว้
+// ไม่กรอก = หาเองจากฟอร์มที่ส่งคำตอบเข้าแท็บ Product Responses (ฟอร์มเดียวกับที่แบรนด์ใช้ลงสินค้าอยู่แล้ว)
+function bstFormUrl_(settings) {
+  const set = String(settings['Product Form URL'] || '').trim();
+  if (/^https:\/\//.test(set)) return set;
+  if (/^(none|off|false)$/i.test(set)) return '';
+  const cache = CacheService.getScriptCache(), hit = cache.get('bst_form_url');
+  if (hit !== null) return hit;
+  let url = '';
+  try {
+    const sh = webSS_().getSheetByName('Product Responses');
+    const raw = sh && sh.getFormUrl ? String(sh.getFormUrl() || '') : '';
+    const m = raw.match(/\/forms\/d\/(e\/)?([A-Za-z0-9_-]{20,})/);
+    if (m) url = m[1] ? 'https://docs.google.com/forms/d/e/' + m[2] + '/viewform' : 'https://docs.google.com/forms/d/' + m[2] + '/viewform';
+  } catch (e) { console.warn('bstFormUrl_ ' + e); }
+  cache.put('bst_form_url', url, 3600);
+  return url;
 }
 function bstProducts_(b) {
   const who = bstBrand_(b);

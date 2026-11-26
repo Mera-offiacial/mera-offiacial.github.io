@@ -30,12 +30,14 @@ function world(opts = {}) {
       ['Narris', 'C1', 'TRUE', '', '', '', 'narriskey0000000000000000000000a'],
       ['Kome.offi', 'C2', 'TRUE', '', '', '', 'komekey00000000000000000000000000'],
       ['Old', 'C3', 'FALSE', '', '', '', 'oldkey0000000000000000000000000000']]),
-    'Web Settings': mkSheet('Web Settings', [['Setting', 'Value'], ['Brand Portal', opts.portal === undefined ? true : opts.portal], ['Product Form URL', 'https://forms.gle/x']].concat(opts.stock !== undefined ? [['Brand Stock', opts.stock]] : [])),
+    'Web Settings': mkSheet('Web Settings', [['Setting', 'Value'], ['Brand Portal', opts.portal === undefined ? true : opts.portal], ['Product Form URL', opts.formSetting === undefined ? 'https://forms.gle/x' : opts.formSetting]].concat(opts.stock !== undefined ? [['Brand Stock', opts.stock]] : [])),
     'Web Orders': mkSheet('Web Orders', [['Order ID', 'Created At', 'Status', 'Slip Status', 'Reject Reason', 'LINE User ID', 'LINE Name', 'SKU', 'Brand', 'Product Name', 'Color', 'Size', 'Qty', 'x', 'y', 'z', 'Items JSON'],
       ['MO-1', '', 'Pending Slip', 'Pending', '', '', '', 'MRA080', 'Narris', '', '', '', 2, '', '', '', ''],
       ['MO-2', '', 'Pending Slip', 'Pending', '', '', '', 'MRA080, MRA079', 'Narris', '', '', '', 3, '', '', '', JSON.stringify([{ sku: 'MRA080', qty: 1 }, { sku: 'MRA079', qty: 2 }])],
       ['MO-3', '', 'Confirmed', 'Paid', '', '', '', 'MRA080', 'Narris', '', '', '', 5, '', '', '', '']]),
   };
+  sheets['Product Responses'] = mkSheet('Product Responses', [['Timestamp']]);
+  sheets['Product Responses'].getFormUrl = () => opts.linkedForm || '';
   const pushes = [], cacheStore = {};
   const ss = { getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = mkSheet(n, [])), getUrl: () => 'https://docs.google.com/spreadsheets/d/X' };
   const ctx = {
@@ -133,4 +135,12 @@ const cell = (w, sku, col) => { const PD = w.sheets['Product Database']; const h
 // 15 SKU ซ้ำในคำขอ → รวม
 { const w = world(); const r = w.call({ action: 'brandStock', key: NK, clientRef: 'k', changes: [{ sku: 'mra079', delta: 1 }, { sku: 'MRA079', delta: 2 }] });
   t('duplicate sku merged', r.ok && cell(w, 'MRA079', 'Stock') === 27, r); }
+// 16 ลิงก์ฟอร์มลงสินค้าใหม่
+{ const w = world({ formSetting: '', linkedForm: 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit' });
+  t('form auto from Product Responses', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/viewform'); }
+{ const w = world({ formSetting: '', linkedForm: 'https://docs.google.com/forms/d/e/1FAIpQLSdXyZ0123456789abcdefghij/viewform' });
+  t('form auto published url', w.call({ action: 'brandProducts', key: NK }).formUrl === 'https://docs.google.com/forms/d/e/1FAIpQLSdXyZ0123456789abcdefghij/viewform'); }
+{ const w = world({ formSetting: 'none', linkedForm: 'https://docs.google.com/forms/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit' });
+  t('form none hides button', w.call({ action: 'brandProducts', key: NK }).formUrl === ''); }
+{ const w = world({ formSetting: '' }); t('no linked form → no button', w.call({ action: 'brandProducts', key: NK }).formUrl === ''); }
 console.log(pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0);
