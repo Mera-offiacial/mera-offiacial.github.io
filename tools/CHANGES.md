@@ -1,3 +1,9 @@
+# แดชบอร์ดทีมมีร่า `dash.html` (26 พ.ย. 2026)
+- หน้าใหม่ `dash.html` (เฉพาะทีม · ใช้ token เดียวกับ admin.html: รหัส ADMIN_PASSWORD หรือ sessionStorage `mera-adm`) · `dash.html?mock=1` = ตัวเลขตัวอย่าง
+- Apps Script ไฟล์ใหม่ `tools/apps-script/Web_Dash.gs` (โปรเจกต์ "Inventory + GB") + 1 บรรทัดใน `webRoute_`: `const dash = webDashRoute_(b); if (dash) return dash;` · Run `dashSetup` 1 ครั้ง (แท็บ OA Daily + trigger 9 โมง) · Deploy New version
+- `adminDash {token, from, to, fresh}` อ่านอย่างเดียว: Traffic, Activity_Log, Web Orders · เพื่อน/บล็อก LINE OA จาก LINE Insight API → แท็บ OA Daily
+- ทดสอบ: `node tools/apps-script/test_dash.js tools/apps-script/Web_Dash.gs` (ต้องมี activity.json = Activity_Log!A5:N)
+
 # หน้าแบรนด์: แท็บ "สินค้า" — แบรนด์ดูสินค้า + เพิ่ม/ลดสต็อกเอง (26 พ.ย. 2026)
 - Apps Script ไฟล์ใหม่ `tools/apps-script/Web_BrandStock.gs` (วางในโปรเจกต์ "Inventory + GB") + ใส่ 1 บรรทัดใน `webRoute_` ของ Web_Order.gs:
   `const bst = webBrandStockRoute_(b); if (bst) return bst;` แล้ว Deploy → Edit → New version
