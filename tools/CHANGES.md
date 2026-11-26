@@ -1,3 +1,13 @@
+# หน้าแบรนด์: แท็บ "สินค้า" — แบรนด์ดูสินค้า + เพิ่ม/ลดสต็อกเอง (26 พ.ย. 2026)
+- Apps Script ไฟล์ใหม่ `tools/apps-script/Web_BrandStock.gs` (วางในโปรเจกต์ "Inventory + GB") + ใส่ 1 บรรทัดใน `webRoute_` ของ Web_Order.gs:
+  `const bst = webBrandStockRoute_(b); if (bst) return bst;` แล้ว Deploy → Edit → New version
+- `brandProducts {key}` สินค้าทุก SKU ของแบรนด์ (แถวที่มี Product Status) + จำนวนที่ลูกค้าจองรอโอน
+- `brandStock {key, clientRef, changes[{sku,delta}], note}` แก้ Stock (+ Remaining ถ้าไม่ใช่สูตร + Inventory Status) ใต้ lock · ลดต่ำกว่าที่จองไม่ได้ · เพิ่มไม่เกิน 100/SKU · ผิดตัวเดียว = ไม่บันทึกทั้งชุด · กดซ้ำไม่บวกซ้ำ
+- มีการเพิ่ม → ข้อความ LINE เข้ากลุ่มแอดมิน (ADMIN_GROUP_ID) ครั้งเดียวต่อการบันทึก · ลดอย่างเดียวไม่แจ้ง · ทุกครั้งลงแท็บใหม่ `Stock Log`
+- ปุ่ม "+ ลงสินค้าใหม่" = Google Form ที่ส่งคำตอบเข้าแท็บ Product Responses (ระบบหาลิงก์ให้เอง + เติมชื่อแบรนด์ในข้อ "ชื่อแบรนด์" · ต้อง Run `bstFormCheck` 1 ครั้งเพื่ออนุญาต Google Forms · ยังไม่อนุญาต = ฟอร์มเปล่า) · Web Settings (ไม่บังคับ): `Product Form URL` = ใช้ลิงก์อื่น / `none` = ไม่มีปุ่ม · `Brand Stock` = FALSE ปิดเฉพาะแท็บนี้
+- `brand.html`: แท็บที่ 5 "สินค้า" (ตัวเลขบนแท็บ = แบบที่หมด) · สรุปจำนวน · ปุ่ม − / + หรือพิมพ์จำนวน "เหลือ" · แถบบันทึกด้านล่าง + หมายเหตุถึงทีม · ยังไม่ติดตั้ง Apps Script = ขึ้น "ยังไม่เปิดใช้งาน"
+- ทดสอบ: `node tools/apps-script/test_brandstock.js tools/apps-script/Web_BrandStock.gs` (52 กรณี) · `python3 tools/apps-script/e2e_brandstock.py <โฟลเดอร์เว็บที่แตก zip>` (20 กรณี)
+
 # ที่มาของคนเข้าเว็บ → KPI Tracker (21 พ.ย. 2026)
 - ไฟล์ใหม่ `assets/track.5a01a9fa.js`: จำที่มา (utm / เว็บที่ส่งต่อ / แอป IG-FB-TikTok-LINE / direct) ครั้งแรกและล่าสุด แล้วส่ง visit / view / login / order ไป Apps Script "Mera Traffic" (`tools/apps-script/Traffic.gs`) → แท็บ Traffic + Traffic Visitors ใน KPI Tracker
 - `assets/app.29f7b090.js` = app.64da4c68.js + 2 บรรทัด (MeraTrack.view ใน trackView, MeraTrack.login หลังได้ idToken) · checkout.js ไม่แก้ (ใช้ event `mera:order` เดิม)
