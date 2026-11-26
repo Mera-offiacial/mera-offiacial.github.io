@@ -251,7 +251,18 @@
       '#mera-line .go[disabled]{opacity:.6}' +
       '#mera-line .no{border:0;background:none;color:#841132;font:600 14px Poppins,Prompt,system-ui,sans-serif;min-height:44px;cursor:pointer}' +
       '#mera-line .spin{width:26px;height:26px;border:3px solid #f0d9c9;border-top-color:#841132;border-radius:50%;align-self:center;animation:meraspin 0.9s linear infinite}' +
-      '@keyframes meraspin{to{transform:rotate(360deg)}}';
+      '@keyframes meraspin{to{transform:rotate(360deg)}}' +
+      '#mera-line .sub{margin:-6px 0 2px;font-size:13px;color:#8a6670}' +
+      '#mera-line ol{list-style:none;margin:2px 0 6px;padding:12px 14px;background:#fff;border:1px solid #f0e2d6;border-radius:16px;display:flex;flex-direction:column;gap:10px}' +
+      '#mera-line li{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:#8a7a7f}' +
+      '#mera-line li b{flex:none;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 12px Poppins,system-ui,sans-serif;background:#f3e9e1;color:#8a7a7f}' +
+      '#mera-line li.now{color:#2a0a14;font-weight:600}#mera-line li.now b{background:#841132;color:#fff}' +
+      '#mera-line li.ok{color:#2a7a4a}#mera-line li.ok b{background:#06C755;color:#fff}' +
+      '#mera-line li span{padding-top:2px}' +
+      '#mera-line .big{font-size:40px;line-height:1;text-align:center;color:#06C755}' +
+      '#mera-toast{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top));transform:translate(-50%,-20px);opacity:0;z-index:10002;background:#2a7a4a;color:#fff;border-radius:999px;padding:10px 18px;' +
+      'font:600 14px Poppins,Prompt,system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.18);transition:all .3s;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}' +
+      '#mera-toast.on{opacity:1;transform:translate(-50%,0)}';
     document.head.appendChild(s);
   }
 
@@ -272,6 +283,27 @@
     }
     sheet.innerHTML = '<div class="s"><img src="/icons/icon-192.png" alt="">' + html + '</div>';
     sheet.onclick = function (e) { onClick(e, e.target.closest && e.target.closest('[data-a]')); };
+  }
+
+  // ขั้นตอนเข้าสู่ระบบ 3 ขั้น · now = ขั้นที่กำลังทำ (0,1,2) · 3 = เสร็จทุกขั้น
+  function steps(now) {
+    var a = [
+      T('กดปุ่มเขียวด้านล่าง → แอป LINE จะเปิดขึ้น', 'Tap the green button → the LINE app opens'),
+      T('กด "ยืนยัน" ในแอป LINE', 'Tap "Confirm" in LINE'),
+      T('กลับมาที่แอป Mera → เข้าสู่ระบบให้อัตโนมัติ', 'Come back to the Mera app → you are signed in')
+    ];
+    return '<ol>' + a.map(function (t, i) {
+      var c = i < now ? 'ok' : (i === now ? 'now' : '');
+      return '<li class="' + c + '"><b>' + (i < now ? '✓' : (i + 1)) + '</b><span>' + t + '</span></li>';
+    }).join('') + '</ol>';
+  }
+  function toast(msg) {
+    css();
+    var t = document.getElementById('mera-toast');
+    if (!t) { t = document.createElement('div'); t.id = 'mera-toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    t.textContent = msg;
+    requestAnimationFrame(function () { t.classList.add('on'); });
+    clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove('on'); }, 3500);
   }
 
   /* =================================================================
@@ -300,10 +332,11 @@
   function confirmPair(tok) {
     function ask(err) {
       showSheet(
-        '<h2>' + T('เชื่อมแอป Mera กับ LINE นี้', 'Connect the Mera app to this LINE') + '</h2>' +
-        '<p>' + T('ใช้เมื่อคุณกด "เชื่อม LINE" จากแอป Mera บนมือถือของคุณเอง<br>ถ้าไม่ได้กดเอง ให้กด "ยกเลิก"', 'Only continue if you tapped "Connect LINE" in your own Mera app.<br>If not, tap "Cancel".') + '</p>' +
+        '<h2>' + T('ยืนยันเข้าสู่ระบบแอป Mera', 'Confirm sign-in to the Mera app') + '</h2>' +
+        '<p class="sub">' + T('ขั้นที่ 2 จาก 3', 'Step 2 of 3') + '</p>' + steps(1) +
+        '<p>' + T('กดยืนยันเฉพาะตอนที่คุณกดเข้าสู่ระบบจากแอป Mera ในมือถือตัวเอง', 'Only confirm if you tapped sign in from your own Mera app.') + '</p>' +
         (err ? '<p style="color:#b3261e">' + esc(err) + '</p>' : '') +
-        '<button class="go" data-a="ok" type="button">' + LINE_SVG + T('เชื่อมเลย', 'Connect') + '</button>' +
+        '<button class="go" data-a="ok" type="button">' + LINE_SVG + T('ยืนยัน', 'Confirm') + '</button>' +
         '<button class="no" data-a="no" type="button">' + T('ยกเลิก', 'Cancel') + '</button>',
         function (e, a) {
           var act = a && a.getAttribute('data-a');
@@ -318,9 +351,10 @@
     function done() {
       cleanUrl(['pair']);
       showSheet(
-        '<h2>' + T('เชื่อมเรียบร้อยแล้ว ✓', 'Connected ✓') + '</h2>' +
-        '<p>' + T('กลับไปที่แอป Mera ได้เลย<br>ครั้งต่อไปสั่งซื้อและดูออเดอร์ในแอปได้ทันที', 'Go back to the Mera app.<br>From now on you can order and see your orders right there.') + '</p>' +
-        '<button class="no" data-a="close" type="button">' + T('ปิด', 'Close') + '</button>',
+        '<h2>' + T('ยืนยันแล้ว ✓', 'Confirmed ✓') + '</h2>' +
+        '<p class="sub">' + T('เหลือขั้นสุดท้าย', 'One last step') + '</p>' + steps(2) +
+        '<p><b>' + T('ปัดกลับไปที่แอป Mera ได้เลย', 'Switch back to the Mera app now') + '</b><br>' + T('แอปจะขึ้น "เข้าสู่ระบบสำเร็จ" ให้เอง', 'It will show "Signed in" by itself') + '</p>' +
+        '<button class="no" data-a="close" type="button">' + T('ปิดหน้านี้', 'Close') + '</button>',
         function (e, a) {
           if ((a && a.getAttribute('data-a') === 'close') || e.target === sheet) {
             closeSheet();
@@ -453,7 +487,10 @@
     stopPolling(); savePair(null);
     session = { token: r.token, exp: r.exp, sub: r.sub, name: r.name || '', picture: r.picture || '' };
     writeSession(session);
-    showSheet('<h2>' + T('เชื่อม LINE เรียบร้อย ✓', 'LINE connected ✓') + '</h2><p>' + T('ครั้งต่อไปไม่ต้องเชื่อมอีก', 'You will stay signed in.') + '</p>', function () {});
+    var who = session.name ? T('คุณ ', '') + session.name : '';
+    showSheet('<div class="big" aria-hidden="true">✓</div><h2>' + T('เข้าสู่ระบบสำเร็จ', 'Signed in') + '</h2>' + steps(3) +
+      '<p>' + (who ? esc(who) + '<br>' : '') + T('แอปจำไว้แล้ว ครั้งต่อไปไม่ต้องเข้าสู่ระบบอีก', 'The app remembers you — no need to sign in again.') + '</p>', function () {});
+    try { sessionStorage.setItem('mera-just-in', who || '1'); } catch (e) {}
     // โหลดหน้าใหม่ให้ทุกส่วนเห็นว่าล็อกอินแล้ว แล้วทำต่อจากที่ลูกค้ากดไว้
     var it = p.intent || { kind: 'home' }, q = '';
     if (it.kind === 'orders') q = '?mera=orders';
@@ -463,7 +500,7 @@
       var s = JSON.stringify({ cart: !!it.cart, items: it.items || [], deal: it.deal || '' });
       if (s.length < 6000) q = '?mc=' + encodeURIComponent(s);
     }
-    setTimeout(function () { location.replace(location.pathname + q); }, 900);
+    setTimeout(function () { location.replace(location.pathname + q); }, 2200);
   }
 
   function slimIntent(it) {
@@ -485,11 +522,14 @@
     var link = 'https://liff.line.me/' + LIFF_ID + '?pair=' + encodeURIComponent(p.code);
     var waiting = !!p.opened;
     showSheet(
-      '<h2>' + T('เชื่อม LINE ครั้งเดียว', 'Connect LINE once') + '</h2>' +
       (waiting
-        ? '<div class="spin" aria-hidden="true"></div><p>' + T('กด "เชื่อมเลย" ในแอป LINE<br>แล้วกลับมาที่แอปนี้ ระบบจะไปต่อให้เอง', 'Tap "Connect" in LINE,<br>then come back here — we will continue automatically.') + '</p>'
-        : '<p>' + T('ยืนยันในแอป LINE 1 ครั้ง แล้วกลับมาที่แอปนี้<br>ครั้งต่อไปสั่งซื้อและดูออเดอร์ได้เลย ไม่ต้องเชื่อมอีก', 'Confirm once in the LINE app, then come back here.<br>After that you can order and see your orders without signing in again.') + '</p>') +
-      '<a class="go" data-a="go" href="' + link + '">' + LINE_SVG + (waiting ? T('เปิด LINE อีกครั้ง', 'Open LINE again') : T('เชื่อม LINE', 'Connect LINE')) + '</a>' +
+        ? '<h2>' + T('รอยืนยันในแอป LINE…', 'Waiting for LINE…') + '</h2>' +
+          '<p class="sub">' + T('ขั้นที่ 2 จาก 3', 'Step 2 of 3') + '</p>' + steps(1) +
+          '<div class="spin" aria-hidden="true"></div><p>' + T('กด "ยืนยัน" ใน LINE แล้วกลับมาที่นี่<br>หน้านี้จะเปลี่ยนเป็น "เข้าสู่ระบบสำเร็จ" เอง', 'Tap "Confirm" in LINE, then come back.<br>This screen will change to "Signed in" by itself.') + '</p>'
+        : '<h2>' + T('เข้าสู่ระบบด้วย LINE', 'Sign in with LINE') + '</h2>' +
+          '<p class="sub">' + T('ใช้เวลาไม่ถึงนาที · ทำครั้งเดียว แอปจะจำไว้', 'Under a minute · only once, the app remembers you') + '</p>' +
+          '<p>' + T('เพื่อสั่งซื้อ จองดีล และติดตามออเดอร์ของคุณ', 'So you can order, join deals and track your orders') + '</p>' + steps(0)) +
+      '<a class="go" data-a="go" href="' + link + '">' + LINE_SVG + (waiting ? T('เปิด LINE อีกครั้ง', 'Open LINE again') : T('เข้าสู่ระบบด้วย LINE', 'Sign in with LINE')) + '</a>' +
       '<button class="no" data-a="no" type="button">' + T('ไว้ทีหลัง', 'Not now') + '</button>' + diagLine(),
       function (e, a) {
         var act = a && a.getAttribute('data-a');
@@ -503,6 +543,12 @@
       });
     if (waiting) startPolling(p);
   }
+
+  // เพิ่งเข้าสู่ระบบ → แถบเขียวด้านบนยืนยันอีกครั้งหลังโหลดหน้า
+  (function justIn() {
+    var w = null; try { w = sessionStorage.getItem('mera-just-in'); sessionStorage.removeItem('mera-just-in'); } catch (e) {}
+    if (w && session) whenReady(function () { setTimeout(function () { toast('✓ ' + T('เข้าสู่ระบบแล้ว', 'Signed in') + (w !== '1' ? ' · ' + w.replace(/^คุณ /, '') : '')); }, 400); });
+  })();
 
   // เปิดแอปกลับมาระหว่างรอ (เช่น iPhone ปิดแอปไปแล้ว) → ถามผลต่อ
   (function resume() {
