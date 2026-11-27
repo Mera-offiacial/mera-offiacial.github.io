@@ -1,3 +1,31 @@
+# หน้าแบรนด์: แคมเปญ "ช้อปได้ไม่ต้องรองาน Sale" + ยอดขายแคมเปญ (27 พ.ย. 2026)
+- Apps Script ไฟล์ใหม่ `tools/apps-script/Web_Campaign.gs` (วางในโปรเจกต์ "Inventory + GB") + `Web_BrandStock.gs` ตัวใหม่ (ส่ง action แคมเปญต่อให้ · ไม่ต้องแก้ webRoute_ เพิ่ม)
+- ติดตั้ง: วาง 2 ไฟล์ → Run `campSetup` 1 ครั้ง (สร้างแท็บ `Campaigns` พร้อมแถว CP-001 + แท็บ `Campaign Entries` + ตัวตั้งเวลา `campTick` ทุกชั่วโมง) → Deploy New version
+- แท็บ `Campaigns`: วันเปิดรับ / Free Until (ลงทะเบียนภายในวันนี้ไม่หักค่าบริการ) / ปิดรับ / เริ่ม / จบ · Fixed Discount % (ส่วนลดมีร่า · ว่าง = ตั้งเองอย่างเดียว) · ค่าบริการ 5% / 5 ชิ้น / 4% · Status Open = แบรนด์เห็น, Closed = ปิดรับแต่ยังดูยอดได้, Draft = ซ่อน
+- `brandCampaign {key}` แคมเปญ + สินค้า (รวมสี/ไซซ์) + สถานะที่ส่ง + ยอดขาย · `brandCampaignSave {key, campaignId, clientRef, agree, items[{product, mode, price, online}]}`
+- กติกา: ทุกชิ้นต้องกรอกราคาออนไลน์ของแบรนด์ · ราคาแคมเปญต้องต่ำกว่าราคาบนมีร่าตอนนี้และต่ำกว่าราคาออนไลน์ · หมดสต็อกเลือกไม่ได้ · ไม่ติ๊ก = ถอนออก · แก้ราคา = รอตรวจใหม่ · แจ้งกลุ่มแอดมินทุกครั้ง
+- ทีมอนุมัติที่แท็บ Campaign Entries: Status = Approved / Rejected (ใส่ Admin Note ก่อน) → แจ้งกลุ่ม LINE แบรนด์
+- ถึงวันเริ่ม `campTick` เปลี่ยน Sale Price ของทุก SKU เป็นราคาแคมเปญ (จำราคาเดิมใน Price Before) · จบ / ถอน / ไม่ผ่าน → คืนราคาเดิม (ถ้ามีคนแก้ราคาไปแล้วจะไม่ทับ และเขียนใน Result) · อนุมัติระหว่างแคมเปญ = ขึ้นทันที
+- ระหว่างอยู่ในแคมเปญ brandEdit แก้ราคาขาย/ราคาเต็มไม่ได้ (CAMP_LOCKED)
+- ยอดขาย: Web Orders ที่ชำระแล้ว (ไม่นับ Pending Slip / Slip Rejected / Cancelled / Error) ในช่วงแคมเปญ ของรุ่นที่อนุมัติ · ค่าบริการนับชิ้นตามเวลาที่จ่าย
+- `brand.html`: ป้ายแคมเปญบนแท็บต้องส่ง / สินค้า → หน้าแคมเปญ (เลือกสินค้า | ยอดขาย) · ยังไม่ติดตั้ง Apps Script = ไม่มีป้าย
+- **ยังไม่ได้ทำ:** กันคูปองกับสินค้าราคาแคมเปญ (โค้ดคูปองอยู่ใน Web_Order.gs / Web_Cart.gs ซึ่งไม่อยู่ใน repo · มีฟังก์ชัน `campHasCampaignSku_(skus)` ให้ใส่) · หักค่าบริการในรอบโอน (Web_Payout.gs)
+- ทดสอบ: `node tools/apps-script/test_campaign.js tools/apps-script/Web_BrandStock.gs tools/apps-script/Web_Campaign.gs` (73 กรณี) · `python3 tools/apps-script/e2e_campaign.py <โฟลเดอร์เว็บที่แตก zip>` (40 กรณี)
+
+# แท็บสินค้า: แดชบอร์ดรูปสินค้า + แบรนด์ขอแก้ข้อมูลสินค้า (ทีม Mera อนุมัติ) (26 พ.ย. 2026)
+- Palm: แก้ได้ทุกอย่างยกเว้นชื่อแบรนด์ · แจ้งทีมทุกครั้ง · ข้อมูลใหม่ต้องรอ Mera อนุมัติ · จำนวน (สต็อก) แค่แจ้ง
+- หน้าแบรนด์: แท็บสินค้าเป็นการ์ดรูป 2 คอลัมน์ (สรุป 3 ช่อง, ค้นหา, กรอง ทั้งหมด/ต้องเติม/รอตรวจ, ป้ายหมด/ใกล้หมด/รอตรวจ/ไม่ผ่าน) → แตะเข้าหน้าแก้ไข: รูป ≤5 (เพิ่ม/ลบ/ตั้งหน้าปก), ชื่อ, หมวด, ราคาขาย, ราคาเต็ม, รายละเอียด, วัสดุ, ขนาด, สต็อกรายสี/ไซซ์, เพิ่มสี/ไซซ์ใหม่ · ปุ่มบันทึกเดียว: สต็อก → brandStock (ขึ้นทันที) + ข้อมูลอื่น → brandEdit (รออนุมัติ)
+- Apps Script (Web_BrandStock.gs): `brandEdit` → แท็บใหม่ `Product Edits` (PE-0001…, Status Pending) + LINE กลุ่มแอดมิน · คำขอใหม่ของสินค้าเดิมทำให้อันเก่าเป็น Superseded · รูปใหม่อัปโหลดเข้าโฟลเดอร์ Mera Banners ตอนส่ง
+- ทีมเลือก Status = Approved → แก้ Product Database (ชื่อ/หมวด/ราคา/% ลด), แถว SKU ใหม่ (MRA เลขสูงสุด+1, Source Form = Mera Seller), Mera Admin: Images (รูป), Product Details (รายละเอียด/วัสดุ/ขนาด), ย้ายคีย์ Images/Product Details/New Tags ตามชื่อใหม่ (ข้อมูลจากฟอร์มเดิมคัดลอกไปไว้) + LINE แจ้งกลุ่มแบรนด์ · Rejected → LINE แจ้งกลุ่มแบรนด์พร้อม Admin Note · ผิดพลาด → กลับเป็น Pending + ข้อความในช่อง Result
+- ต้อง Run `bstSetup` 1 ครั้ง (สร้างแท็บ + ตัวจับการเลือก Status `bstOnEdit`) แล้ว Deploy New version
+- ทดสอบ: test_brandstock.js 54 · test_brandedit.js 41 · e2e_brandedit.py 22
+
+# แท็บสินค้า: แจ้งทีม Mera ทุกครั้งที่แบรนด์แก้สต็อก (26 พ.ย. 2026)
+- Palm ขอให้แจ้งทั้งเพิ่มและลด: หัวข้อความ "📦 แบรนด์เพิ่มสต็อก" / "📉 แบรนด์ลดสต็อก" / "📦 แบรนด์แก้สต็อก" (มีทั้งสองอย่าง)
+- ลดจนเหลือ 0 → "⚠️ หมดแล้ว" ท้ายบรรทัด + สรุป "หมด N รายการ"
+- หน้าแบรนด์: ข้อความ "ทีม Mera จะได้รับแจ้ง" ทุกการแก้ · ช่องหมายเหตุขึ้นทุกครั้ง
+- ต้องวาง Web_BrandStock.gs ใหม่ + Deploy New version · ทดสอบ 54 + 20 กรณี
+
 # หน้าแบรนด์: แท็บ "สินค้า" — แบรนด์ดูสินค้า + เพิ่ม/ลดสต็อกเอง (26 พ.ย. 2026)
 - Apps Script ไฟล์ใหม่ `tools/apps-script/Web_BrandStock.gs` (วางในโปรเจกต์ "Inventory + GB") + ใส่ 1 บรรทัดใน `webRoute_` ของ Web_Order.gs:
   `const bst = webBrandStockRoute_(b); if (bst) return bst;` แล้ว Deploy → Edit → New version

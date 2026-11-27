@@ -67,7 +67,7 @@ with sync_playwright() as p:
     check('toast notified', 'แจ้งทีม Mera แล้ว' in pg.inner_text('.toast'))
     check('bar gone, values refreshed', pg.locator('.sbar').count()==0 and pg.input_value('#st-MRA079')=='30')
     # cancel
-    pg.click('[data-sku=MRA122][data-d="-1"]'); check('decrease-only bar no note', pg.locator('#stnote').count()==0 and 'ลด 1 ชิ้น' in pg.inner_text('.sbar'))
+    pg.click('[data-sku=MRA122][data-d="-1"]'); check('decrease-only bar has note', pg.locator('#stnote').count()==1 and 'ลด 1 ชิ้น' in pg.inner_text('.sbar'))
     pg.click('[data-a=stReset]'); check('cancel resets', pg.locator('.sbar').count()==0 and pg.input_value('#st-MRA122')=='2')
     # server rejects
     st['fail']='below'; pg.click('[data-sku=MRA122][data-d="1"]'); pg.click('[data-a=stSave]'); pg.wait_for_selector('.sbar .err')
