@@ -14,6 +14,7 @@
  *       เพิ่ม/ลดสต็อก → แก้คอลัมน์ Stock (+ Remaining / Inventory Status) ใต้ LockService
  *       ลดได้ไม่ต่ำกว่าของที่ลูกค้าจองไว้ (ออเดอร์เว็บที่รอตรวจสลิป)
  *       ทุกครั้งลงแท็บ Stock Log และส่ง LINE เข้ากลุ่มแอดมิน (ADMIN_GROUP_ID) ทั้งเพิ่มและลด · ลดจนหมดมีป้ายเตือน
+ *  - brandCampaign / brandCampaignSave → Web_Campaign.gs (แคมเปญ + ยอดขายแคมเปญ)
  *  - brandEdit {key, clientRef, product, changes{name,category,price,orig,description,material,size}, photos[], newVariants[], note}
  *       แบรนด์ขอแก้ข้อมูลสินค้า (ทุกอย่างยกเว้นชื่อแบรนด์) → แถวใหม่ในแท็บ Product Edits (Status = Pending) + แจ้งกลุ่มแอดมิน
  *       ยังไม่ขึ้นเว็บจนทีมเลือก Status = Approved (ระบบแก้ชีตให้ + แจ้งกลุ่มแบรนด์) · Rejected = แจ้งกลุ่มแบรนด์พร้อม Admin Note
@@ -53,6 +54,8 @@ function webBrandStockRoute_(b) {
     case 'brandProducts': return bstProducts_(b);
     case 'brandStock': return bstSave_(b);
     case 'brandEdit': return bstEdit_(b);
+    case 'brandCampaign': return campBrandView_(b);       // Web_Campaign.gs
+    case 'brandCampaignSave': return campSave_(b);        // Web_Campaign.gs
     default: return null;
   }
 }
@@ -433,6 +436,8 @@ function bstEdit_(b) {
     });
     const np = Number(diff.price || before.price), no = Number(diff.orig || before.orig);
     if (('price' in diff || 'orig' in diff) && no && np > no) throw webErr_('BAD_EDIT', 'ราคาขายบน Mera ต้องไม่เกินราคาเต็มค่ะ');
+    if (('price' in diff || 'orig' in diff) && typeof campLocked_ === 'function' && campLocked_(brand, cur.name))
+      throw webErr_('CAMP_LOCKED', 'สินค้านี้อยู่ในแคมเปญ แก้ราคาได้หลังแคมเปญจบ หรือถอนออกจากแคมเปญก่อนนะคะ (แก้ข้อมูลอื่นได้ตามปกติ)');
 
     // รูป: รายการเรียงใหม่ทั้งหมด · {url} = รูปเดิม · {mime,data} = รูปใหม่ (อัปโหลดตอนนี้ ยังไม่ขึ้นเว็บจนอนุมัติ)
     let photos = null;
@@ -525,6 +530,7 @@ function bstSetup() {
 function bstOnEdit(e) {
   try {
     const sh = e && e.range && e.range.getSheet();
+    if (sh && typeof CAMP !== 'undefined' && sh.getName() === CAMP.ENTRIES) return campOnEdit_(e);   // Web_Campaign.gs
     if (!sh || sh.getName() !== BST.EDITS || e.range.getRow() < 2) return;
     const c0 = e.range.getColumn(), c1 = c0 + e.range.getNumColumns() - 1;
     if (6 < c0 || 6 > c1) return;
